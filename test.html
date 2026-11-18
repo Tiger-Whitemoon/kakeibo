@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>家計簿 残高計算テスト</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif; margin: 24px; color: #1f2328; }
+  h1 { font-size: 20px; }
+  .ok { color: #1a7f37; } .ng { color: #cf222e; font-weight: 600; }
+  li { margin: 4px 0; } pre { margin: 2px 0 6px 16px; font-size: 12px; color: #57606a; }
+</style>
+</head>
+<body>
+<h1>残高計算の自動テスト</h1>
+<p id="summary"></p>
+<ul id="list"></ul>
+<script src="../js/util.js"></script>
+<script src="../js/balance.js"></script>
+<script src="../js/credit.js"></script>
+<script src="../js/report.js"></script>
+<script src="../js/ledger.js"></script>
+<script src="tests.js"></script>
+<script>
+  const res = KB.runTests();
+  const ng = res.filter((r) => !r.ok).length;
+  document.getElementById('summary').innerHTML =
+    `<span class="${ng ? 'ng' : 'ok'}">${res.length - ng} / ${res.length} 件成功</span>`;
+  document.getElementById('list').innerHTML = res.map((r) =>
+    `<li class="${r.ok ? 'ok' : 'ng'}">${r.ok ? '✓' : '✗'} ${KB.util.esc(r.name)}` +
+    (r.ok ? '' : `<pre>期待: ${KB.util.esc(JSON.stringify(r.expected))}\n実際: ${KB.util.esc(JSON.stringify(r.actual))}</pre>`) +
+    '</li>').join('');
+</script>
+</body>
+</html>
