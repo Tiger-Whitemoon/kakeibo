@@ -15,12 +15,727 @@
 <h1>残高計算の自動テスト</h1>
 <p id="summary"></p>
 <ul id="list"></ul>
-<script src="../js/util.js"></script>
-<script src="../js/balance.js"></script>
-<script src="../js/credit.js"></script>
-<script src="../js/report.js"></script>
-<script src="../js/ledger.js"></script>
-<script src="tests.js"></script>
+<script>
+/* 共通ユーティリティ（画面にも保存にも依存しない） */
+(function (KB) {
+  'use strict';
+  const U = (KB.util = {});
+
+  U.pad = (n) => String(n).padStart(2, '0');
+
+  U.todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+  };
+
+  // 'YYYY-MM-DD' <-> 通し日数（UTC基準なので時差の影響なし）
+  U.dayNum = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 864e5;
+  U.fromDayNum = (n) => new Date(n * 864e5).toISOString().slice(0, 10);
+  U.addDays = (s, k) => U.fromDayNum(U.dayNum(s) + k);
+  U.isValidDate = (s) =>
+    typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && U.fromDayNum(U.dayNum(s)) === s;
+
+  U.monthStart = (y, m) => `${y}-${U.pad(m)}-01`;
+  U.monthEnd = (y, m) => U.fromDayNum(Date.UTC(y, m, 0) / 864e5);
+  U.ym = (s) => s.slice(0, 7);
+
+  U.uuid = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  };
+  U.now = () => new Date().toISOString();
+
+  U.num = (v) => (v == null ? '' : (v < 0 ? '−' : '') + Math.abs(v).toLocaleString('ja-JP'));
+  U.yen = (v) => (v == null ? '不明' : U.num(v) + '円');
+
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  U.weekday = (s) => WD[new Date(U.dayNum(s) * 864e5).getUTCDay()];
+  U.md = (s) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
+  U.ymd = (s) => `${s.slice(0, 4)}/${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
+  U.mdw = (s) => `${U.md(s)}（${U.weekday(s)}）`;
+
+  U.esc = (s) =>
+    String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+
+  U.MAX_AMOUNT = 999999999; // 9億9,999万9,999円
+
+  /** 金額入力を整数に直す。全角数字・カンマ・「円」・各種マイナス記号を受け付ける */
+  U.parseAmount = (str, opts) => {
+    const allowNegative = !!(opts && opts.allowNegative);
+    let s = String(str == null ? '' : str)
+      .trim()
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[,，、\s円]/g, '')
+      .replace(/^[−－ー‐―-]/, '-')
+      .replace(/^[＋+]/, '');
+    if (s === '') return { error: '金額を入力してください' };
+    if (!/^-?\d+$/.test(s)) return { error: '数字で入力してください' };
+    const v = parseInt(s, 10);
+    if (Math.abs(v) > U.MAX_AMOUNT) return { error: '金額が大きすぎます（上限 9億9,999万9,999円）' };
+    if (!allowNegative && v < 1) return { error: '1円以上で入力してください' };
+    return { value: v };
+  };
+
+  /** CSV（Excelで文字化けしないよう BOM付きUTF-8） */
+  U.csv = (rows) => {
+    const cell = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    return '﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+  };
+
+  /**
+   * ファイルを保存する。claude.ai の中で動いているときは、その保存機能（downloads）を使う。
+   * 戻り値：'saved' / 'declined' / 'error'
+   */
+  U.inViewer = () => typeof window !== 'undefined' && !!(window.claude && typeof window.claude.use === 'function');
+  U.download = async (filename, text, mime) => {
+    try {
+      if (U.inViewer()) {
+        const dl = await window.claude.use('downloads');
+        if (dl) {
+          try {
+            await dl.save({ filename, data: text });
+            return 'saved';
+          } catch (e) {
+            if (e && e.code === 'declined') return 'declined';
+            throw e;
+          }
+        }
+      }
+      U._anchorDownload(filename, text, mime);
+      return 'saved';
+    } catch (e) {
+      console.error(e);
+      if (KB.ui) KB.ui.toast('ファイルを保存できませんでした（' + ((e && (e.message || e.code)) || e) + '）', 'error');
+      return 'error';
+    }
+  };
+  U._anchorDownload = (filename, text, mime) => {
+    const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
+  };
+
+  U.sum = (arr, f) => arr.reduce((s, x) => s + (f ? f(x) : x), 0);
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 残高計算（設計書「残高計算ルール」1〜4、6） — 純粋関数のみ */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = (KB.balance = {});
+
+  /*
+   * 時点キー = 通し日数 × 10 + 並び順
+   *   0: 朝チェックポイントの調整取引
+   *   1: 朝チェックポイント
+   *   2: その日の通常取引（収入・支出・振替・カード引き落とし）
+   *   3: 夜チェックポイントの調整取引
+   *   4: 夜チェックポイント
+   */
+  B.snapKey = (s) => U.dayNum(s.date) * 10 + (s.timing === 'start' ? 1 : 4);
+  B.queryKey = (date, timing) => U.dayNum(date) * 10 + (timing === 'start' ? 1 : 4);
+  B.txKey = (date) => U.dayNum(date) * 10 + 2;
+
+  B.isAutoCard = (acc, accById) =>
+    !!(acc && acc.kind === 'credit' && acc.settlementAccountId && accById.has(acc.settlementAccountId));
+
+  const byCreated = (a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 :
+    (a.createdAt || '') < (b.createdAt || '') ? -1 : (a.createdAt || '') > (b.createdAt || '') ? 1 :
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+
+  /**
+   * data = { accounts, categories, transactions, snapshots }（削除済みは含めない）
+   * 戻り値の model は残高・差額・出納帳の計算に使う
+   */
+  B.buildModel = function (data) {
+    const accById = new Map(data.accounts.map((a) => [a.id, a]));
+    const catById = new Map(data.categories.map((c) => [c.id, c]));
+    const snapById = new Map(data.snapshots.map((s) => [s.id, s]));
+    const perAcc = new Map();
+    data.accounts.forEach((a) => perAcc.set(a.id, { events: [], snaps: [], cum: [] }));
+    const push = (accId, ev) => {
+      const p = perAcc.get(accId);
+      if (p) p.events.push(ev);
+    };
+
+    const txs = data.transactions.slice().sort(byCreated);
+    const adjBySnap = new Map();
+    txs.forEach((t, i) => {
+      const amt = t.amount;
+      if (t.type === 'income') push(t.accountId, { key: B.txKey(t.date), delta: amt, kind: 'tx', tx: t, seq: i });
+      else if (t.type === 'expense') push(t.accountId, { key: B.txKey(t.date), delta: -amt, kind: 'tx', tx: t, seq: i });
+      else if (t.type === 'transfer') {
+        push(t.accountId, { key: B.txKey(t.date), delta: -amt, kind: 'tx', tx: t, seq: i, dir: 'out' });
+        push(t.toAccountId, { key: B.txKey(t.date), delta: amt, kind: 'tx', tx: t, seq: i, dir: 'in' });
+      } else if (t.type === 'adjust') {
+        const s = snapById.get(t.snapshotId);
+        const key = s ? B.snapKey(s) - 1 : B.txKey(t.date);
+        push(t.accountId, { key, delta: amt, kind: 'adjust', tx: t, seq: i });
+        if (s) {
+          if (!adjBySnap.has(s.id)) adjBySnap.set(s.id, []);
+          adjBySnap.get(s.id).push(t);
+        }
+      }
+      // クレジットカード：引き落とし日に カード＋ / 引き落とし口座− （設計書 6）
+      const acc = accById.get(t.accountId);
+      if ((t.type === 'expense' || t.type === 'income') && t.withdrawDate && B.isAutoCard(acc, accById)) {
+        const sign = t.type === 'expense' ? amt : -amt;
+        const key = B.txKey(t.withdrawDate);
+        push(acc.id, { key, delta: sign, kind: 'wd', tx: t, seq: 1e9 + i, card: acc.id });
+        push(acc.settlementAccountId, { key, delta: -sign, kind: 'wd', tx: t, seq: 1e9 + i, card: acc.id });
+      }
+    });
+
+    data.snapshots.forEach((s) => {
+      const p = perAcc.get(s.accountId);
+      if (p) p.snaps.push({ snap: s, key: B.snapKey(s) });
+    });
+
+    perAcc.forEach((p) => {
+      p.events.sort((a, b) => a.key - b.key || a.seq - b.seq);
+      let c = 0;
+      p.cum = p.events.map((e) => (c += e.delta));
+      p.snaps.sort((a, b) => a.key - b.key);
+    });
+
+    const model = { data, accById, catById, snapById, perAcc, adjBySnap };
+    model.diffs = new Map(); // snapId -> 差額情報
+    perAcc.forEach((p, accId) => B.snapshotDiffs(model, accId).forEach((d) => model.diffs.set(d.snap.id, d)));
+    return model;
+  };
+
+  /** key 以下の取引の増減合計（二分探索） */
+  function cumTo(p, key) {
+    let lo = 0, hi = p.events.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (p.events[mid].key <= key) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return ans < 0 ? 0 : p.cum[ans];
+  }
+  B._cumTo = cumTo;
+
+  /**
+   * 時点キー qkey での残高
+   * status: exact（順算） / estimated（逆算・推定） / unknown（チェックポイントなし）
+   */
+  B.balanceAtKey = function (model, accId, qkey) {
+    const p = model.perAcc.get(accId);
+    if (!p || p.snaps.length === 0) return { value: null, status: 'unknown' };
+    let prev = null, next = null;
+    for (const s of p.snaps) {
+      if (s.key <= qkey) prev = s;
+      else { next = s; break; }
+    }
+    if (prev) return { value: prev.snap.amount + cumTo(p, qkey) - cumTo(p, prev.key), status: 'exact' };
+    return { value: next.snap.amount - (cumTo(p, next.key) - cumTo(p, qkey)), status: 'estimated' };
+  };
+
+  B.balanceAt = (model, accId, date, timing) => B.balanceAtKey(model, accId, B.queryKey(date, timing || 'end'));
+
+  /** 全口座の合計（不明の口座は除き、件数を返す） */
+  B.totalAt = function (model, date, timing, accIds) {
+    let value = 0, unknown = 0, estimated = false;
+    const ids = accIds || [...model.perAcc.keys()];
+    ids.forEach((id) => {
+      const b = B.balanceAt(model, id, date, timing);
+      if (b.status === 'unknown') unknown++;
+      else {
+        value += b.value;
+        if (b.status === 'estimated') estimated = true;
+      }
+    });
+    return { value, unknown, estimated };
+  };
+
+  /**
+   * チェックポイントごとの差額（設計書 4）
+   * diff = 登録額 − 直前のチェックポイントからの計算額（調整取引込み）
+   * rawDiff = 調整取引を除いた差額（「調整をやり直す」で使う）
+   */
+  B.snapshotDiffs = function (model, accId) {
+    const p = model.perAcc.get(accId);
+    if (!p) return [];
+    return p.snaps.map((s, i) => {
+      const adjs = model.adjBySnap.get(s.snap.id) || [];
+      const adjSum = U.sum(adjs, (t) => t.amount);
+      if (i === 0) return { snap: s.snap, key: s.key, first: true, expected: null, diff: 0, rawDiff: 0, adjSum, adjs };
+      const prev = p.snaps[i - 1];
+      const expected = prev.snap.amount + cumTo(p, s.key) - cumTo(p, prev.key);
+      const diff = s.snap.amount - expected;
+      return { snap: s.snap, key: s.key, first: false, expected, diff, rawDiff: diff + adjSum, adjSum, adjs };
+    });
+  };
+
+  /**
+   * 登録しようとしている残高の「計算残高」（入力中の差額表示用）
+   * excludeSnapId を除いた上で、その時点の残高を求める
+   */
+  B.previewSnapshot = function (data, accId, date, timing, excludeSnapId) {
+    const d2 = Object.assign({}, data, {
+      snapshots: data.snapshots.filter((s) => s.id !== excludeSnapId),
+      transactions: data.transactions.filter((t) => !(t.type === 'adjust' && t.snapshotId === excludeSnapId)),
+    });
+    const m = B.buildModel(d2);
+    const qkey = B.queryKey(date, timing);
+    const p = m.perAcc.get(accId);
+    // 直前のチェックポイントがある場合のみ「計算残高」を出す（逆算の推定値とは比べない）
+    const hasPrev = p && p.snaps.some((s) => s.key < qkey);
+    if (!hasPrev) return { expected: null };
+    // 自分の調整取引は除外済み。同時点直前の他の調整取引は含める
+    return { expected: B.balanceAtKey(m, accId, qkey).value };
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* クレジットカードの引き落とし（設計書「6. クレジットカードの引き落とし」） */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = KB.balance;
+  const C = (KB.credit = {});
+
+  /** 引き落とし日の初期値：同じカードで最後に入力した引き落とし日が今日以降ならその日、過去なら空 */
+  C.defaultWithdrawDate = function (transactions, cardId, today, excludeTxId) {
+    let last = null;
+    transactions.forEach((t) => {
+      if (t.accountId !== cardId || !t.withdrawDate || t.id === excludeTxId) return;
+      if (t.type !== 'expense' && t.type !== 'income') return;
+      if (!last || (t.createdAt || '') > (last.createdAt || '')) last = t;
+    });
+    if (last && last.withdrawDate >= today) return last.withdrawDate;
+    return '';
+  };
+
+  /**
+   * カード × 引き落とし日ごとの合計
+   * 合計 = 支出の合計 − 収入（返品など）の合計
+   */
+  C.groups = function (model, cardId) {
+    const card = model.accById.get(cardId);
+    if (!B.isAutoCard(card, model.accById)) return [];
+    const map = new Map();
+    model.data.transactions.forEach((t) => {
+      if (t.accountId !== cardId || !t.withdrawDate) return;
+      if (t.type !== 'expense' && t.type !== 'income') return;
+      if (!map.has(t.withdrawDate))
+        map.set(t.withdrawDate, { cardId, date: t.withdrawDate, total: 0, count: 0, items: [] });
+      const g = map.get(t.withdrawDate);
+      g.total += t.type === 'expense' ? t.amount : -t.amount;
+      g.count++;
+      g.items.push(t);
+    });
+    const bankId = card.settlementAccountId;
+    const groups = [...map.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+    groups.forEach((g) => {
+      g.items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      const bal = B.balanceAt(model, bankId, g.date, 'end');
+      g.bankBalance = bal;
+      g.insufficient = bal.status !== 'unknown' && bal.value < 0;
+    });
+    return groups;
+  };
+
+  /** 今日以降で最も近い引き落とし（ホーム用） */
+  C.nextGroup = function (model, cardId, today) {
+    return C.groups(model, cardId).find((g) => g.date >= today) || null;
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 月次・年次集計（設計書「5. 月次集計」「7. 年次集計」） */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = KB.balance;
+  const R = (KB.report = {});
+
+  /**
+   * 期間 [from, to] の集計
+   * 期首残高 = from の朝時点、期末残高 = to の夜時点
+   * 恒等式：期首 ＋ 収入 − 支出 ＋ 調整 ＋ 未調整の差額 ＝ 期末
+   */
+  R.period = function (model, from, to) {
+    const k0 = B.queryKey(from, 'start');
+    const k1 = B.queryKey(to, 'end');
+    const inRange = (k) => k > k0 && k <= k1;
+    let income = 0, expense = 0, adjust = 0, unadjusted = 0;
+    const expByCat = new Map(), incByCat = new Map();
+
+    model.data.transactions.forEach((t) => {
+      if (t.type === 'income' || t.type === 'expense') {
+        if (!inRange(B.txKey(t.date))) return;
+        const map = t.type === 'income' ? incByCat : expByCat;
+        map.set(t.categoryId, (map.get(t.categoryId) || 0) + t.amount);
+        if (t.type === 'income') income += t.amount;
+        else expense += t.amount;
+      } else if (t.type === 'adjust') {
+        const s = model.snapById.get(t.snapshotId);
+        const key = s ? B.snapKey(s) - 1 : B.txKey(t.date);
+        if (inRange(key)) adjust += t.amount;
+      }
+    });
+    model.diffs.forEach((d) => {
+      if (!d.first && inRange(d.key)) unadjusted += d.diff;
+    });
+
+    const accIds = [...model.perAcc.keys()];
+    const open = B.totalAt(model, from, 'start', accIds);
+    const close = B.totalAt(model, to, 'end', accIds);
+    const byAccount = model.data.accounts.map((a) => ({
+      account: a,
+      open: B.balanceAt(model, a.id, from, 'start'),
+      close: B.balanceAt(model, a.id, to, 'end'),
+    }));
+    return { from, to, income, expense, net: income - expense, adjust, unadjusted, open, close, byAccount, expByCat, incByCat };
+  };
+
+  R.month = (model, y, m) => R.period(model, U.monthStart(y, m), U.monthEnd(y, m));
+
+  /** 年次：年間サマリー・月別推移・カテゴリ×月 */
+  R.year = function (model, y) {
+    const total = R.period(model, `${y}-01-01`, `${y}-12-31`);
+    const months = [];
+    for (let m = 1; m <= 12; m++) months.push(R.month(model, y, m));
+    const catTable = (kind) => {
+      const key = kind === 'expense' ? 'expByCat' : 'incByCat';
+      const cats = model.data.categories.filter((c) => c.kind === kind);
+      const ids = new Set(cats.map((c) => c.id));
+      // 削除済みカテゴリ等の取引も落とさない
+      months.forEach((mo) => mo[key].forEach((_, id) => ids.add(id)));
+      return [...ids]
+        .map((id) => {
+          const cat = model.catById.get(id);
+          const vals = months.map((mo) => mo[key].get(id) || 0);
+          return { id, name: cat ? cat.name : '（未分類）', order: cat ? cat.order : 9999, vals, total: U.sum(vals) };
+        })
+        .filter((r) => r.total !== 0 || (model.catById.get(r.id) && !model.catById.get(r.id).archived))
+        .sort((a, b) => a.order - b.order);
+    };
+    return { year: y, total, months, expenseRows: catTable('expense'), incomeRows: catTable('income') };
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 出納帳（設計書「8. 出納帳」） */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = KB.balance;
+  const L = (KB.ledger = {});
+
+  L.bookName = (kind) =>
+    ({ cash: '現金出納帳', bank: '預金出納帳', emoney: '電子マネー出納帳', credit: 'カード利用帳' }[kind] || '出納帳');
+
+  function txDesc(model, ev) {
+    const t = ev.tx;
+    const memo = t.memo ? '　' + t.memo : '';
+    if (ev.kind === 'adjust') return '残高調整（使途不明）' + memo;
+    if (t.type === 'transfer') {
+      if (ev.dir === 'out') {
+        const to = model.accById.get(t.toAccountId);
+        return (to ? to.name : '（不明な口座）') + 'へ振替' + memo;
+      }
+      const from = model.accById.get(t.accountId);
+      return (from ? from.name : '（不明な口座）') + 'から振替' + memo;
+    }
+    const cat = model.catById.get(t.categoryId);
+    let s = (cat ? cat.name : '（未分類）') + memo;
+    if (t.withdrawDate && B.isAutoCard(model.accById.get(t.accountId), model.accById))
+      s += `（引落 ${U.md(t.withdrawDate)}）`;
+    return s;
+  }
+
+  /**
+   * 行の種類
+   *   carry      … 繰越（期首・期末）
+   *   entry      … 取引（txId があれば編集できる）
+   *   start      … 残高登録（ここから開始）
+   *   gap        … 残高差額（未調整）
+   *   monthTotal … 月計
+   *   cumTotal   … 累計
+   * mark: 'ok'（照合済） / 'diff'（差額あり）
+   */
+  L.build = function (model, accId, from, to) {
+    const acc = model.accById.get(accId);
+    const p = model.perAcc.get(accId);
+    const k0 = B.queryKey(from, 'start');
+    const k1 = B.queryKey(to, 'end');
+    const fullYear = from.slice(5) === '01-01' && to.slice(5) === '12-31' && from.slice(0, 4) === to.slice(0, 4);
+    const open = B.balanceAtKey(model, accId, k0);
+    const rows = [];
+    rows.push({
+      type: 'carry', date: from, desc: fullYear ? '前年より繰越' : '前期より繰越',
+      balance: open.value, status: open.status,
+    });
+    let running = open.value;
+    let monthIn = 0, monthOut = 0, cumIn = 0, cumOut = 0;
+    let curMonth = null;
+    let lastEntry = rows[0];
+
+    const closeMonth = () => {
+      if (curMonth == null) return;
+      rows.push({ type: 'monthTotal', ym: curMonth, in: monthIn, out: monthOut });
+      rows.push({ type: 'cumTotal', ym: curMonth, in: cumIn, out: cumOut });
+      monthIn = monthOut = 0;
+    };
+    const addEntry = (row) => {
+      const ym = U.ym(row.date);
+      if (curMonth !== ym) {
+        closeMonth();
+        curMonth = ym;
+      }
+      const delta = (row.in || 0) - (row.out || 0);
+      if (running != null) running += delta;
+      row.balance = running;
+      monthIn += row.in || 0; monthOut += row.out || 0;
+      cumIn += row.in || 0; cumOut += row.out || 0;
+      rows.push(row);
+      lastEntry = row;
+    };
+
+    // 期間内の取引とチェックポイントを時点順に並べる
+    const evs = p ? p.events.filter((e) => e.key > k0 && e.key <= k1) : [];
+    const snaps = p ? p.snaps.filter((s) => s.key > k0 && s.key <= k1) : [];
+    let si = 0;
+    const flushSnapsUpTo = (key) => {
+      while (si < snaps.length && snaps[si].key <= key) {
+        const s = snaps[si++];
+        const d = model.diffs.get(s.snap.id);
+        if (d.first) {
+          if (open.status !== 'exact') {
+            addEntry({ type: 'start', date: s.snap.date, desc: `残高登録 ${U.yen(s.snap.amount)}（ここから開始）` });
+            running = s.snap.amount;
+            lastEntry.balance = running;
+            lastEntry.mark = 'ok';
+          } else lastEntry.mark = 'ok';
+        } else if (d.diff !== 0) {
+          addEntry({
+            type: 'gap', date: s.snap.date, desc: '残高差額（未調整）',
+            in: d.diff > 0 ? d.diff : 0, out: d.diff < 0 ? -d.diff : 0, mark: 'diff', diff: d.diff,
+          });
+          running = s.snap.amount;
+          lastEntry.balance = running;
+        } else lastEntry.mark = 'ok';
+      }
+    };
+
+    const used = new Set();
+    for (let i = 0; i < evs.length; i++) {
+      if (used.has(i)) continue;
+      const e = evs[i];
+      flushSnapsUpTo(e.key - 1);
+      if (e.kind === 'wd') {
+        // 同じ日・同じカードの引き落としは1行にまとめる
+        let delta = e.delta, n = 1;
+        for (let j = i + 1; j < evs.length && evs[j].key === e.key; j++) {
+          if (evs[j].kind === 'wd' && evs[j].card === e.card) {
+            delta += evs[j].delta;
+            n++;
+            used.add(j);
+          }
+        }
+        const date = e.tx.withdrawDate;
+        let desc;
+        if (e.card === accId) {
+          const bank = model.accById.get(acc.settlementAccountId);
+          desc = `引き落とし（${bank ? bank.name : ''}）`;
+        } else {
+          const card = model.accById.get(e.card);
+          desc = `${card ? card.name : 'カード'} 引き落とし（${n}件）`;
+        }
+        addEntry({ type: 'entry', date, desc, in: delta > 0 ? delta : 0, out: delta < 0 ? -delta : 0, withdraw: { card: e.card, date } });
+      } else {
+        addEntry({
+          type: 'entry', date: e.kind === 'adjust' ? e.tx.date : e.tx.date, desc: txDesc(model, e),
+          in: e.delta > 0 ? e.delta : 0, out: e.delta < 0 ? -e.delta : 0,
+          txId: e.kind === 'tx' ? e.tx.id : null, adjust: e.kind === 'adjust',
+        });
+      }
+    }
+    flushSnapsUpTo(k1);
+    closeMonth();
+    rows.push({
+      type: 'carry', date: to, desc: fullYear ? '次年へ繰越' : '次期へ繰越', balance: running,
+      status: running == null ? 'unknown' : 'exact',
+    });
+    return { account: acc, name: L.bookName(acc && acc.kind), from, to, open, rows, totalIn: cumIn, totalOut: cumOut };
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 残高計算の自動テスト（設計書「テスト観点」） — test.html と Node の両方で動く */
+(function (KB) {
+  'use strict';
+  const U = KB.util, B = KB.balance, C = KB.credit, R = KB.report, L = KB.ledger;
+
+  let seq = 0;
+  const ts = () => '2026-11-17T00:00:' + String(seq++).padStart(2, '0') + '.000Z';
+  const acc = (id, kind, extra) => Object.assign({ id, name: id, kind, order: 0, createdAt: ts() }, extra || {});
+  const cat = (id, kind) => ({ id, name: id, kind, order: 0 });
+  const tx = (o) => Object.assign({ id: 't' + seq, createdAt: ts() }, o);
+  const snap = (id, accountId, date, timing, amount) => ({ id, accountId, date, timing, amount, createdAt: ts() });
+
+  function base() {
+    return {
+      accounts: [acc('財布', 'cash')],
+      categories: [cat('食費', 'expense'), cat('日用品', 'expense'), cat('給与', 'income'), cat('その他収入', 'income')],
+      snapshots: [snap('s1', '財布', '2026-11-17', 'end', 30000), snap('s2', '財布', '2026-11-25', 'end', 27500)],
+      transactions: [
+        tx({ id: 'a', type: 'expense', date: '2026-11-18', amount: 800, accountId: '財布', categoryId: '食費' }),
+        tx({ id: 'b', type: 'expense', date: '2026-11-20', amount: 1200, accountId: '財布', categoryId: '日用品' }),
+        tx({ id: 'c', type: 'expense', date: '2026-11-10', amount: 2000, accountId: '財布', categoryId: '食費' }),
+      ],
+    };
+  }
+  const withTx = (d, ...t) => Object.assign({}, d, { transactions: d.transactions.concat(t) });
+  const adjust = tx({ id: 'adj', type: 'adjust', date: '2026-11-25', amount: -500, accountId: '財布', snapshotId: 's2' });
+
+  KB.runTests = function () {
+    const results = [];
+    const eq = (name, actual, expected) =>
+      results.push({ name, ok: JSON.stringify(actual) === JSON.stringify(expected), actual, expected });
+
+    let m = B.buildModel(base());
+    eq('11/18 夜の残高（順算）', B.balanceAt(m, '財布', '2026-11-18', 'end'), { value: 29200, status: 'exact' });
+    eq('11/25 の差額（調整前）', m.diffs.get('s2').diff, -500);
+    eq('11/1 朝の残高（逆算・推定）', B.balanceAt(m, '財布', '2026-11-01', 'start'), { value: 32000, status: 'estimated' });
+    eq('11/17 朝の残高', B.balanceAt(m, '財布', '2026-11-17', 'start').value, 30000);
+
+    m = B.buildModel(withTx(base(), tx({ type: 'expense', date: '2026-11-17', amount: 1000, accountId: '財布', categoryId: '食費' })));
+    eq('11/17 に支出1,000円を追加したときの 11/17 朝', B.balanceAt(m, '財布', '2026-11-17', 'start').value, 31000);
+
+    m = B.buildModel(withTx(base(), adjust));
+    eq('調整を記録した後の 11/25 の差額', m.diffs.get('s2').diff, 0);
+    eq('調整後も「やり直し」用の元の差額は −500', m.diffs.get('s2').rawDiff, -500);
+
+    const nov = R.month(m, 2026, 11);
+    eq('11月の月次集計（月初・収入・支出・調整・月末）',
+      [nov.open.value, nov.income, nov.expense, nov.adjust, nov.unadjusted, nov.close.value],
+      [32000, 0, 4000, -500, 0, 27500]);
+    const novNoAdj = R.month(B.buildModel(base()), 2026, 11);
+    eq('調整なしなら −500 は「未調整の差額」に出る', [novNoAdj.adjust, novNoAdj.unadjusted, novNoAdj.close.value], [0, -500, 27500]);
+    eq('恒等式：月初＋収入−支出＋調整＋未調整＝月末',
+      novNoAdj.open.value + novNoAdj.income - novNoAdj.expense + novNoAdj.adjust + novNoAdj.unadjusted, novNoAdj.close.value);
+
+    // 振替
+    const dT = base();
+    dT.accounts.push(acc('銀行', 'bank'));
+    dT.snapshots.push(snap('sb', '銀行', '2026-11-01', 'start', 100000));
+    dT.transactions.push(tx({ type: 'transfer', date: '2026-11-21', amount: 10000, accountId: '銀行', toAccountId: '財布' }));
+    m = B.buildModel(dT);
+    const before = B.totalAt(m, '2026-11-20', 'end').value, after = B.totalAt(m, '2026-11-21', 'end').value;
+    const r = R.month(m, 2026, 11);
+    eq('振替1万円（銀行→財布）：合計残高は変わらない', after, before);
+    eq('振替は月の収支に入らない', [r.income, r.expense], [0, 4000]);
+    eq('振替で財布は＋1万円', B.balanceAt(m, '財布', '2026-11-21', 'end').value, 29200 - 1200 + 10000);
+
+    // チェックポイントなし
+    const dU = base();
+    dU.accounts.push(acc('へそくり', 'cash'));
+    m = B.buildModel(dU);
+    eq('チェックポイントなしの口座', B.balanceAt(m, 'へそくり', '2026-11-20', 'end').status, 'unknown');
+
+    // クレジットカード
+    const dC = base();
+    dC.accounts.push(acc('銀行', 'bank'), acc('カード', 'credit', { settlementAccountId: '銀行' }));
+    dC.snapshots.push(snap('sb', '銀行', '2026-11-01', 'start', 100000), snap('sc', 'カード', '2026-11-01', 'start', 0));
+    dC.transactions.push(
+      tx({ type: 'expense', date: '2026-11-14', amount: 3000, accountId: 'カード', categoryId: '食費', withdrawDate: '2026-12-10' }),
+      tx({ type: 'expense', date: '2026-11-15', amount: 2000, accountId: 'カード', categoryId: '日用品', withdrawDate: '2026-12-10' })
+    );
+    m = B.buildModel(dC);
+    const g = C.groups(m, 'カード');
+    eq('12/10 引き落とし合計', [g.length, g[0].date, g[0].total, g[0].count], [1, '2026-12-10', 5000, 2]);
+    eq('銀行残高：12/9夜は変化なし、12/10夜に5,000円減る',
+      [B.balanceAt(m, '銀行', '2026-12-09', 'end').value, B.balanceAt(m, '銀行', '2026-12-10', 'end').value], [100000, 95000]);
+    eq('カード残高：利用で −5,000円、引き落としで 0 に戻る',
+      [B.balanceAt(m, 'カード', '2026-11-30', 'end').value, B.balanceAt(m, 'カード', '2026-12-10', 'end').value], [-5000, 0]);
+    eq('カード利用は11月の支出、12月の支出には入らない', [R.month(m, 2026, 11).expense, R.month(m, 2026, 12).expense], [9000, 0]);
+    eq('引き落とし日の残高が足りる', g[0].insufficient, false);
+    const dC2 = JSON.parse(JSON.stringify(dC));
+    dC2.snapshots.find((s) => s.id === 'sb').amount = 3000;
+    eq('引き落とし日の銀行残高が合計未満なら「残高不足」', C.groups(B.buildModel(dC2), 'カード')[0].insufficient, true);
+    eq('引き落とし日の初期値：直前の引き落とし日が今日以降ならその日',
+      C.defaultWithdrawDate(dC.transactions, 'カード', '2026-11-17'), '2026-12-10');
+    eq('引き落とし日の初期値：直前の引き落とし日が過去なら空欄',
+      C.defaultWithdrawDate(dC.transactions, 'カード', '2026-12-11'), '');
+
+    // 年次
+    m = B.buildModel(withTx(dC, adjust));
+    const y = R.year(m, 2026);
+    eq('年次の収入・支出・調整は12か月の合計と一致',
+      [y.total.income, y.total.expense, y.total.adjust],
+      [U.sum(y.months, (x) => x.income), U.sum(y.months, (x) => x.expense), U.sum(y.months, (x) => x.adjust)]);
+    eq('年初＋収入−支出＋調整＋未調整＝年末',
+      y.total.open.value + y.total.income - y.total.expense + y.total.adjust + y.total.unadjusted, y.total.close.value);
+    eq('カテゴリ別年間表の年計の合計＝年間支出', U.sum(y.expenseRows, (x) => x.total), y.total.expense);
+
+    // 出納帳
+    const led = L.build(m, '財布', '2026-01-01', '2026-12-31');
+    const rows = led.rows;
+    eq('2026年の現金出納帳の繰越は推定', [rows[0].desc, rows[0].status, rows[0].balance], ['前年より繰越', 'estimated', 34000 - 2000]);
+    const r1118 = rows.find((x) => x.type === 'entry' && x.date === '2026-11-18');
+    eq('現金出納帳 11/18 の差引残高', r1118.balance, 29200);
+    const rAdj = rows.find((x) => x.adjust);
+    eq('11/25 の行：残高調整 出金500円、差引残高27,500円、照合済',
+      [rAdj.desc, rAdj.out, rAdj.balance, rAdj.mark], ['残高調整（使途不明）', 500, 27500, 'ok']);
+    const mt = rows.find((x) => x.type === 'monthTotal' && x.ym === '2026-11');
+    eq('11月の月計', [mt.in, mt.out], [0, 4500]);
+    eq('次年へ繰越＝12/31夜の残高', rows[rows.length - 1].balance, B.balanceAt(m, '財布', '2026-12-31', 'end').value);
+    const bankLed = L.build(m, '銀行', '2026-01-01', '2026-12-31');
+    const wdRows = bankLed.rows.filter((x) => x.withdraw);
+    eq('預金出納帳 12/10 は引き落とし1行', wdRows.map((x) => [x.date, x.desc, x.out]), [['2026-12-10', 'カード 引き落とし（2件）', 5000]]);
+    const ledNoAdj = L.build(B.buildModel(base()), '財布', '2026-11-01', '2026-11-30');
+    const gap = ledNoAdj.rows.find((x) => x.type === 'gap');
+    eq('未調整の差額は「残高差額（未調整）」行になり、帳簿の残高は登録額に合う',
+      [gap.out, gap.mark, gap.balance, ledNoAdj.rows[ledNoAdj.rows.length - 1].balance], [500, 'diff', 27500, 27500]);
+    const startRow = ledNoAdj.rows.find((x) => x.type === 'start');
+    eq('最初の残高登録の行', [startRow.date, startRow.balance], ['2026-11-17', 30000]);
+
+    // 朝・夜
+    const dS = base();
+    dS.snapshots = [snap('m1', '財布', '2026-11-17', 'start', 30000)];
+    dS.transactions = [tx({ type: 'expense', date: '2026-11-17', amount: 1000, accountId: '財布', categoryId: '食費' })];
+    m = B.buildModel(dS);
+    eq('朝時点の登録はその日の支出を含まない', [B.balanceAt(m, '財布', '2026-11-17', 'start').value, B.balanceAt(m, '財布', '2026-11-17', 'end').value], [30000, 29000]);
+
+    // 金額入力
+    eq('金額：全角・カンマ・円', U.parseAmount('１，２００円').value, 1200);
+    eq('金額：マイナス（残高）', U.parseAmount('−500', { allowNegative: true }).value, -500);
+    eq('金額：0円はエラー', !!U.parseAmount('0').error, true);
+    eq('金額：文字はエラー', !!U.parseAmount('abc').error, true);
+    eq('金額：上限超えはエラー', !!U.parseAmount('1000000000').error, true);
+    eq('月末日', [U.monthEnd(2026, 2), U.monthEnd(2028, 2), U.monthEnd(2026, 12)], ['2026-02-28', '2028-02-29', '2026-12-31']);
+
+    return results;
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
 <script>
   const res = KB.runTests();
   const ng = res.filter((r) => !r.ok).length;

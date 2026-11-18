@@ -6,7 +6,264 @@
 <meta name="theme-color" content="#1f6f5c">
 <title>家計簿</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6f5c'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='white' font-family='sans-serif'%3E%C2%A5%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css">
+<style>
+/* 家計簿 — PC・スマホ両対応 */
+:root {
+  --bg: #f4f5f2;
+  --card: #ffffff;
+  --ink: #1d2320;
+  --ink2: #5b6560;
+  --line: #e2e5e0;
+  --line2: #eef0ec;
+  --accent: #1f6f5c;
+  --accent-soft: #e3f0eb;
+  --inc: #17803d;
+  --exp: #c2402f;
+  --warn: #9a6200;
+  --warn-soft: #fff4dc;
+  --bad: #b42318;
+  --bad-soft: #fde8e6;
+  --radius: 10px;
+  --nav-h: 52px;
+  font-size: 15px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+  line-height: 1.55;
+  font-feature-settings: "tnum" 1;
+}
+a { color: var(--accent); }
+h1 { font-size: 1.35rem; margin: 0; }
+h2 { font-size: 1.08rem; margin: 0 0 10px; }
+h3 { font-size: .95rem; margin: 18px 0 8px; color: var(--ink2); }
+.muted { color: var(--ink2); }
+.neg { color: var(--bad); }
+.inc { color: var(--inc); }
+.exp { color: var(--exp); }
+.ok-text { color: var(--inc); font-weight: 600; }
+.nowrap { white-space: nowrap; }
+.r { text-align: right; }
+[hidden] { display: none !important; }
+
+/* ---------- ヘッダー・ナビ ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 18px;
+  background: var(--accent); color: #fff; padding: 0 20px; height: var(--nav-h);
+  box-shadow: 0 1px 0 rgba(0,0,0,.08);
+}
+.brand { color: #fff; text-decoration: none; font-weight: 700; font-size: 1.1rem; white-space: nowrap; }
+.brand span { font-size: .7rem; font-weight: 600; background: rgba(255,255,255,.2); border-radius: 4px; padding: 1px 6px; margin-left: 6px; vertical-align: 2px; }
+#nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+#nav::-webkit-scrollbar { display: none; }
+#nav a { color: rgba(255,255,255,.85); text-decoration: none; padding: 7px 12px; border-radius: 8px; white-space: nowrap; font-size: .92rem; }
+#nav a:hover { background: rgba(255,255,255,.12); color: #fff; }
+#nav a.active { background: #fff; color: var(--accent); font-weight: 700; }
+
+main { max-width: 1080px; margin: 0 auto; padding: 18px 16px 110px; }
+.loading { color: var(--ink2); }
+
+/* ---------- カード・レイアウト ---------- */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.card-head h2 { margin: 0; }
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cols > .card { margin-bottom: 0; }
+.cols + .card, .cols + .cols { margin-top: 16px; }
+.cols { margin-bottom: 16px; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 2px 0 14px; }
+.notice { background: var(--accent-soft); border: 1px solid #c4dfd5; border-radius: var(--radius); padding: 10px 14px; margin-bottom: 14px; }
+.notice.warn { background: var(--warn-soft); border-color: #f0d9a6; }
+.notice.bad { background: var(--bad-soft); border-color: #f5c2bc; margin: 0; border-radius: 0; text-align: center; }
+.empty { color: var(--ink2); margin: 8px 0; }
+.error { color: var(--bad); }
+.setup { max-width: 640px; margin: 24px auto; }
+.setup h1 { margin-bottom: 8px; }
+
+/* ---------- 表 ---------- */
+table { border-collapse: collapse; width: 100%; }
+.list th, .list td { padding: 8px 8px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+.list thead th { font-size: .8rem; font-weight: 600; color: var(--ink2); text-align: left; border-bottom: 1px solid var(--line); }
+.list thead th.r { text-align: right; }
+.list tr.clickable { cursor: pointer; }
+.list tr.clickable:hover td { background: #f7f9f6; }
+.list .total td { font-weight: 700; border-top: 1px solid var(--line); }
+.list tr.archived td { color: var(--ink2); }
+.kv th, .kv td { padding: 7px 4px; border-bottom: 1px solid var(--line2); }
+.kv th { text-align: left; font-weight: 500; }
+.kv tr.total th, .kv tr.total td { font-weight: 700; border-top: 1px solid var(--line); border-bottom: none; }
+.sub { font-size: .8rem; color: var(--ink2); }
+.amt { font-weight: 600; white-space: nowrap; }
+.amt.neg, .amt.exp { color: var(--exp); }
+.amt.inc { color: var(--inc); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.tag { display: inline-block; font-size: .72rem; line-height: 1.5; padding: 0 6px; border-radius: 4px; background: var(--line2); color: var(--ink2); font-weight: 500; white-space: nowrap; vertical-align: 1px; }
+.tag.est { background: #eef1fb; color: #3b55a5; }
+.tag.bad { background: var(--bad-soft); color: var(--bad); font-weight: 700; }
+.tag.kind { font-weight: 400; }
+.actions-cell { white-space: nowrap; }
+.actions-cell .btn { margin-left: 4px; }
+.scroll { overflow-x: auto; }
+.wide-num td, .wide-num th { font-size: .82rem; padding: 6px 6px; white-space: nowrap; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
+.stats div { background: #f7f9f6; border-radius: 8px; padding: 8px 10px; }
+.stats span { display: block; font-size: .78rem; color: var(--ink2); }
+.stats b { font-size: 1.05rem; white-space: nowrap; }
+.bars td { vertical-align: middle; }
+.bars .bar-cell { width: 45%; }
+.bar { display: block; height: 10px; border-radius: 5px; min-width: 2px; opacity: .85; }
+
+/* 出納帳 */
+.ledger td { font-size: .9rem; }
+.ledger tr.carry td { background: #f7f9f6; font-weight: 600; }
+.ledger tr.subtotal td { background: #fbfbf9; font-weight: 600; font-size: .85rem; border-top: 1px solid var(--line); }
+.ledger tr.cumtotal td { color: var(--ink2); font-size: .82rem; }
+.ledger tr.gap td { background: var(--warn-soft); }
+.ledger .mark-col { width: 64px; }
+.mark { font-size: .72rem; white-space: nowrap; font-weight: 700; }
+.mark.ok { color: var(--inc); }
+.mark.bad { color: var(--bad); }
+
+/* 引き落とし */
+details.wd { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
+details.wd > summary { display: flex; gap: 14px; align-items: center; padding: 10px 12px; cursor: pointer; flex-wrap: wrap; }
+details.wd > table { margin: 0 0 6px; }
+.wd-date { font-weight: 600; min-width: 9em; }
+.wd-total { font-weight: 700; font-size: 1.05rem; }
+details.past > summary { cursor: pointer; color: var(--ink2); margin: 12px 0 6px; }
+
+/* ---------- フォーム ---------- */
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
+.field > span:first-child { font-size: .8rem; font-weight: 600; color: var(--ink2); }
+input:not([type]), input[type=text], input[type=search], input[type=date], select {
+  font: inherit; color: var(--ink); background: #fff; border: 1px solid #cfd5cf; border-radius: 8px;
+  padding: 8px 10px; min-height: 40px; width: 100%;
+}
+input[type=color] { width: 56px; height: 40px; border: 1px solid #cfd5cf; border-radius: 8px; padding: 2px; background: #fff; }
+input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.err { color: var(--bad); font-weight: 600; }
+.warn { color: var(--warn); }
+.hint { color: var(--ink2); font-size: .82rem; }
+.check { display: flex; gap: 8px; align-items: center; margin: 4px 0 12px; }
+.check input { width: 18px; height: 18px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.filters { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: flex-end; }
+.filters .field { margin-bottom: 4px; }
+.filters .grow { flex: 1 1 180px; }
+.range { display: flex; align-items: center; gap: 6px; }
+.range input { width: auto; }
+.seg { display: flex; border: 1px solid #cfd5cf; border-radius: 9px; overflow: hidden; margin-bottom: 14px; }
+.seg label { flex: 1; position: relative; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; text-align: center; padding: 8px 6px; cursor: pointer; font-weight: 600; color: var(--ink2); border-left: 1px solid #cfd5cf; }
+.seg label:first-child span { border-left: none; }
+.seg input:checked + span { background: var(--accent); color: #fff; }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -3px; }
+.seg.small { margin-bottom: 0; }
+.seg.small span { font-size: .8rem; padding: 9px 4px; }
+.preview { background: #f7f9f6; border-radius: 8px; padding: 8px 12px; margin: -4px 0 12px; font-size: .9rem; }
+.preview:empty { display: none; }
+
+.btn {
+  font: inherit; font-weight: 600; border: 1px solid #cfd5cf; background: #fff; color: var(--ink);
+  border-radius: 8px; padding: 8px 14px; cursor: pointer; min-height: 40px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+}
+.btn:hover { background: #f4f6f3; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #185a4a; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn.danger-ghost { color: var(--bad); border-color: #f0b8b1; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.small { padding: 4px 10px; min-height: 32px; font-size: .85rem; }
+.btn:disabled { opacity: .35; cursor: default; }
+.icon-btn { border: none; background: none; font-size: 1.5rem; line-height: 1; cursor: pointer; color: var(--ink2); padding: 4px 8px; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+.actions.left { justify-content: flex-start; }
+.actions .spacer { flex: 1; }
+.tools { display: flex; gap: 6px; }
+
+#fab {
+  position: fixed; right: max(20px, calc(50vw - 520px)); bottom: 24px; z-index: 30;
+  width: 58px; height: 58px; border-radius: 50%; border: none; background: var(--accent); color: #fff;
+  font-size: 2rem; line-height: 1; cursor: pointer; box-shadow: 0 6px 18px rgba(31,111,92,.35);
+}
+#fab:hover { background: #185a4a; }
+
+/* ---------- ダイアログ ---------- */
+dialog { border: none; border-radius: 14px; padding: 0; width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); box-shadow: 0 18px 50px rgba(0,0,0,.25); color: var(--ink); }
+dialog::backdrop { background: rgba(20,28,24,.45); }
+dialog.confirm { width: min(420px, calc(100vw - 32px)); }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px 4px; }
+.dlg-head h2 { margin: 0; }
+.dlg-body { padding: 10px 18px 18px; }
+.confirm-msg { margin: 6px 0 4px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 96px; transform: translate(-50%, 20px); z-index: 100;
+  background: #1d2320; color: #fff; padding: 10px 18px; border-radius: 10px; opacity: 0; pointer-events: none;
+  transition: opacity .2s, transform .2s; max-width: calc(100vw - 32px); font-size: .92rem;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.error { background: var(--bad); }
+
+.print-only { display: none; }
+.show-sm { display: none; }
+
+/* ---------- スマホ ---------- */
+@media (max-width: 760px) {
+  :root { font-size: 15px; }
+  .topbar { height: auto; padding: 0; flex-direction: column; align-items: stretch; gap: 0; }
+  .brand { padding: 10px 14px 4px; }
+  #nav { padding: 4px 8px 8px; }
+  main { padding: 12px 10px 110px; }
+  .card { padding: 14px 12px; }
+  .cols { grid-template-columns: 1fr; }
+  .grid2 { grid-template-columns: 1fr; }
+  .hide-sm { display: none; }
+  .show-sm { display: block; }
+  .stats b { font-size: .95rem; }
+  .filters .field { flex: 1 1 140px; }
+  .range input { min-width: 0; flex: 1; }
+  .actions-cell { white-space: normal; }
+  .actions-cell .btn { margin: 2px 0 2px 4px; }
+  #fab { right: 16px; bottom: 18px; }
+  dialog { max-height: calc(100vh - 16px); }
+  .dlg-body { padding: 8px 14px 14px; }
+  .ledger { min-width: 620px; }
+  .ledger td, .ledger th { font-size: .82rem; padding: 6px 5px; }
+}
+
+/* ---------- 印刷（A4縦） ---------- */
+@page { size: A4 portrait; margin: 14mm 12mm; }
+@page wide { size: A4 landscape; margin: 12mm 10mm; }
+@media print {
+  body { background: #fff; font-size: 10pt; }
+  .no-print, .topbar, #fab, #toast, .tools, .card-head h2, .hint { display: none !important; }
+  .print-only { display: block; }
+  main { max-width: none; padding: 0; }
+  .card { border: none; padding: 0; margin: 0 0 8mm; }
+  .cols { display: block; }
+  h1.print-only, .print-head h1 { font-size: 14pt; margin-bottom: 2mm; }
+  .print-head p { margin: 0 0 3mm; }
+  body.printing-section main > *:not(.print-target):not(.cols) { display: none !important; }
+  body.printing-section .cols > *:not(.print-target) { display: none !important; }
+  body.printing-section .cols:not(:has(.print-target)) { display: none !important; }
+  .print-wide { page: wide; }
+  .scroll { overflow: visible; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  .list th, .list td { padding: 3px 4px; border-bottom: 0.5pt solid #999; }
+  .list thead th { border-bottom: 1pt solid #333; color: #000; }
+  .tag.est { border: 0.5pt solid #3b55a5; background: none; }
+  .dot { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .ledger tr.carry td, .ledger tr.subtotal td { background: none; }
+  a { color: inherit; text-decoration: none; }
+}
+
+</style>
 </head>
 <body>
 <header class="topbar no-print">
@@ -18,17 +275,2054 @@
 <button id="fab" class="no-print" aria-label="取引を入力" title="取引を入力" hidden>＋</button>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="js/util.js"></script>
-<script src="js/balance.js"></script>
-<script src="js/credit.js"></script>
-<script src="js/report.js"></script>
-<script src="js/ledger.js"></script>
-<script src="js/db.js"></script>
-<script src="js/io.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/views/dialogs.js"></script>
-<script src="js/views/main.js"></script>
-<script src="js/views/reports.js"></script>
-<script src="js/app.js"></script>
+<script>
+/* 共通ユーティリティ（画面にも保存にも依存しない） */
+(function (KB) {
+  'use strict';
+  const U = (KB.util = {});
+
+  U.pad = (n) => String(n).padStart(2, '0');
+
+  U.todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+  };
+
+  // 'YYYY-MM-DD' <-> 通し日数（UTC基準なので時差の影響なし）
+  U.dayNum = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 864e5;
+  U.fromDayNum = (n) => new Date(n * 864e5).toISOString().slice(0, 10);
+  U.addDays = (s, k) => U.fromDayNum(U.dayNum(s) + k);
+  U.isValidDate = (s) =>
+    typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && U.fromDayNum(U.dayNum(s)) === s;
+
+  U.monthStart = (y, m) => `${y}-${U.pad(m)}-01`;
+  U.monthEnd = (y, m) => U.fromDayNum(Date.UTC(y, m, 0) / 864e5);
+  U.ym = (s) => s.slice(0, 7);
+
+  U.uuid = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  };
+  U.now = () => new Date().toISOString();
+
+  U.num = (v) => (v == null ? '' : (v < 0 ? '−' : '') + Math.abs(v).toLocaleString('ja-JP'));
+  U.yen = (v) => (v == null ? '不明' : U.num(v) + '円');
+
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  U.weekday = (s) => WD[new Date(U.dayNum(s) * 864e5).getUTCDay()];
+  U.md = (s) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
+  U.ymd = (s) => `${s.slice(0, 4)}/${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
+  U.mdw = (s) => `${U.md(s)}（${U.weekday(s)}）`;
+
+  U.esc = (s) =>
+    String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+
+  U.MAX_AMOUNT = 999999999; // 9億9,999万9,999円
+
+  /** 金額入力を整数に直す。全角数字・カンマ・「円」・各種マイナス記号を受け付ける */
+  U.parseAmount = (str, opts) => {
+    const allowNegative = !!(opts && opts.allowNegative);
+    let s = String(str == null ? '' : str)
+      .trim()
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[,，、\s円]/g, '')
+      .replace(/^[−－ー‐―-]/, '-')
+      .replace(/^[＋+]/, '');
+    if (s === '') return { error: '金額を入力してください' };
+    if (!/^-?\d+$/.test(s)) return { error: '数字で入力してください' };
+    const v = parseInt(s, 10);
+    if (Math.abs(v) > U.MAX_AMOUNT) return { error: '金額が大きすぎます（上限 9億9,999万9,999円）' };
+    if (!allowNegative && v < 1) return { error: '1円以上で入力してください' };
+    return { value: v };
+  };
+
+  /** CSV（Excelで文字化けしないよう BOM付きUTF-8） */
+  U.csv = (rows) => {
+    const cell = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    return '﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+  };
+
+  /**
+   * ファイルを保存する。claude.ai の中で動いているときは、その保存機能（downloads）を使う。
+   * 戻り値：'saved' / 'declined' / 'error'
+   */
+  U.inViewer = () => typeof window !== 'undefined' && !!(window.claude && typeof window.claude.use === 'function');
+  U.download = async (filename, text, mime) => {
+    try {
+      if (U.inViewer()) {
+        const dl = await window.claude.use('downloads');
+        if (dl) {
+          try {
+            await dl.save({ filename, data: text });
+            return 'saved';
+          } catch (e) {
+            if (e && e.code === 'declined') return 'declined';
+            throw e;
+          }
+        }
+      }
+      U._anchorDownload(filename, text, mime);
+      return 'saved';
+    } catch (e) {
+      console.error(e);
+      if (KB.ui) KB.ui.toast('ファイルを保存できませんでした（' + ((e && (e.message || e.code)) || e) + '）', 'error');
+      return 'error';
+    }
+  };
+  U._anchorDownload = (filename, text, mime) => {
+    const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
+  };
+
+  U.sum = (arr, f) => arr.reduce((s, x) => s + (f ? f(x) : x), 0);
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 残高計算（設計書「残高計算ルール」1〜4、6） — 純粋関数のみ */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = (KB.balance = {});
+
+  /*
+   * 時点キー = 通し日数 × 10 + 並び順
+   *   0: 朝チェックポイントの調整取引
+   *   1: 朝チェックポイント
+   *   2: その日の通常取引（収入・支出・振替・カード引き落とし）
+   *   3: 夜チェックポイントの調整取引
+   *   4: 夜チェックポイント
+   */
+  B.snapKey = (s) => U.dayNum(s.date) * 10 + (s.timing === 'start' ? 1 : 4);
+  B.queryKey = (date, timing) => U.dayNum(date) * 10 + (timing === 'start' ? 1 : 4);
+  B.txKey = (date) => U.dayNum(date) * 10 + 2;
+
+  B.isAutoCard = (acc, accById) =>
+    !!(acc && acc.kind === 'credit' && acc.settlementAccountId && accById.has(acc.settlementAccountId));
+
+  const byCreated = (a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 :
+    (a.createdAt || '') < (b.createdAt || '') ? -1 : (a.createdAt || '') > (b.createdAt || '') ? 1 :
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+
+  /**
+   * data = { accounts, categories, transactions, snapshots }（削除済みは含めない）
+   * 戻り値の model は残高・差額・出納帳の計算に使う
+   */
+  B.buildModel = function (data) {
+    const accById = new Map(data.accounts.map((a) => [a.id, a]));
+    const catById = new Map(data.categories.map((c) => [c.id, c]));
+    const snapById = new Map(data.snapshots.map((s) => [s.id, s]));
+    const perAcc = new Map();
+    data.accounts.forEach((a) => perAcc.set(a.id, { events: [], snaps: [], cum: [] }));
+    const push = (accId, ev) => {
+      const p = perAcc.get(accId);
+      if (p) p.events.push(ev);
+    };
+
+    const txs = data.transactions.slice().sort(byCreated);
+    const adjBySnap = new Map();
+    txs.forEach((t, i) => {
+      const amt = t.amount;
+      if (t.type === 'income') push(t.accountId, { key: B.txKey(t.date), delta: amt, kind: 'tx', tx: t, seq: i });
+      else if (t.type === 'expense') push(t.accountId, { key: B.txKey(t.date), delta: -amt, kind: 'tx', tx: t, seq: i });
+      else if (t.type === 'transfer') {
+        push(t.accountId, { key: B.txKey(t.date), delta: -amt, kind: 'tx', tx: t, seq: i, dir: 'out' });
+        push(t.toAccountId, { key: B.txKey(t.date), delta: amt, kind: 'tx', tx: t, seq: i, dir: 'in' });
+      } else if (t.type === 'adjust') {
+        const s = snapById.get(t.snapshotId);
+        const key = s ? B.snapKey(s) - 1 : B.txKey(t.date);
+        push(t.accountId, { key, delta: amt, kind: 'adjust', tx: t, seq: i });
+        if (s) {
+          if (!adjBySnap.has(s.id)) adjBySnap.set(s.id, []);
+          adjBySnap.get(s.id).push(t);
+        }
+      }
+      // クレジットカード：引き落とし日に カード＋ / 引き落とし口座− （設計書 6）
+      const acc = accById.get(t.accountId);
+      if ((t.type === 'expense' || t.type === 'income') && t.withdrawDate && B.isAutoCard(acc, accById)) {
+        const sign = t.type === 'expense' ? amt : -amt;
+        const key = B.txKey(t.withdrawDate);
+        push(acc.id, { key, delta: sign, kind: 'wd', tx: t, seq: 1e9 + i, card: acc.id });
+        push(acc.settlementAccountId, { key, delta: -sign, kind: 'wd', tx: t, seq: 1e9 + i, card: acc.id });
+      }
+    });
+
+    data.snapshots.forEach((s) => {
+      const p = perAcc.get(s.accountId);
+      if (p) p.snaps.push({ snap: s, key: B.snapKey(s) });
+    });
+
+    perAcc.forEach((p) => {
+      p.events.sort((a, b) => a.key - b.key || a.seq - b.seq);
+      let c = 0;
+      p.cum = p.events.map((e) => (c += e.delta));
+      p.snaps.sort((a, b) => a.key - b.key);
+    });
+
+    const model = { data, accById, catById, snapById, perAcc, adjBySnap };
+    model.diffs = new Map(); // snapId -> 差額情報
+    perAcc.forEach((p, accId) => B.snapshotDiffs(model, accId).forEach((d) => model.diffs.set(d.snap.id, d)));
+    return model;
+  };
+
+  /** key 以下の取引の増減合計（二分探索） */
+  function cumTo(p, key) {
+    let lo = 0, hi = p.events.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (p.events[mid].key <= key) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return ans < 0 ? 0 : p.cum[ans];
+  }
+  B._cumTo = cumTo;
+
+  /**
+   * 時点キー qkey での残高
+   * status: exact（順算） / estimated（逆算・推定） / unknown（チェックポイントなし）
+   */
+  B.balanceAtKey = function (model, accId, qkey) {
+    const p = model.perAcc.get(accId);
+    if (!p || p.snaps.length === 0) return { value: null, status: 'unknown' };
+    let prev = null, next = null;
+    for (const s of p.snaps) {
+      if (s.key <= qkey) prev = s;
+      else { next = s; break; }
+    }
+    if (prev) return { value: prev.snap.amount + cumTo(p, qkey) - cumTo(p, prev.key), status: 'exact' };
+    return { value: next.snap.amount - (cumTo(p, next.key) - cumTo(p, qkey)), status: 'estimated' };
+  };
+
+  B.balanceAt = (model, accId, date, timing) => B.balanceAtKey(model, accId, B.queryKey(date, timing || 'end'));
+
+  /** 全口座の合計（不明の口座は除き、件数を返す） */
+  B.totalAt = function (model, date, timing, accIds) {
+    let value = 0, unknown = 0, estimated = false;
+    const ids = accIds || [...model.perAcc.keys()];
+    ids.forEach((id) => {
+      const b = B.balanceAt(model, id, date, timing);
+      if (b.status === 'unknown') unknown++;
+      else {
+        value += b.value;
+        if (b.status === 'estimated') estimated = true;
+      }
+    });
+    return { value, unknown, estimated };
+  };
+
+  /**
+   * チェックポイントごとの差額（設計書 4）
+   * diff = 登録額 − 直前のチェックポイントからの計算額（調整取引込み）
+   * rawDiff = 調整取引を除いた差額（「調整をやり直す」で使う）
+   */
+  B.snapshotDiffs = function (model, accId) {
+    const p = model.perAcc.get(accId);
+    if (!p) return [];
+    return p.snaps.map((s, i) => {
+      const adjs = model.adjBySnap.get(s.snap.id) || [];
+      const adjSum = U.sum(adjs, (t) => t.amount);
+      if (i === 0) return { snap: s.snap, key: s.key, first: true, expected: null, diff: 0, rawDiff: 0, adjSum, adjs };
+      const prev = p.snaps[i - 1];
+      const expected = prev.snap.amount + cumTo(p, s.key) - cumTo(p, prev.key);
+      const diff = s.snap.amount - expected;
+      return { snap: s.snap, key: s.key, first: false, expected, diff, rawDiff: diff + adjSum, adjSum, adjs };
+    });
+  };
+
+  /**
+   * 登録しようとしている残高の「計算残高」（入力中の差額表示用）
+   * excludeSnapId を除いた上で、その時点の残高を求める
+   */
+  B.previewSnapshot = function (data, accId, date, timing, excludeSnapId) {
+    const d2 = Object.assign({}, data, {
+      snapshots: data.snapshots.filter((s) => s.id !== excludeSnapId),
+      transactions: data.transactions.filter((t) => !(t.type === 'adjust' && t.snapshotId === excludeSnapId)),
+    });
+    const m = B.buildModel(d2);
+    const qkey = B.queryKey(date, timing);
+    const p = m.perAcc.get(accId);
+    // 直前のチェックポイントがある場合のみ「計算残高」を出す（逆算の推定値とは比べない）
+    const hasPrev = p && p.snaps.some((s) => s.key < qkey);
+    if (!hasPrev) return { expected: null };
+    // 自分の調整取引は除外済み。同時点直前の他の調整取引は含める
+    return { expected: B.balanceAtKey(m, accId, qkey).value };
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* クレジットカードの引き落とし（設計書「6. クレジットカードの引き落とし」） */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = KB.balance;
+  const C = (KB.credit = {});
+
+  /** 引き落とし日の初期値：同じカードで最後に入力した引き落とし日が今日以降ならその日、過去なら空 */
+  C.defaultWithdrawDate = function (transactions, cardId, today, excludeTxId) {
+    let last = null;
+    transactions.forEach((t) => {
+      if (t.accountId !== cardId || !t.withdrawDate || t.id === excludeTxId) return;
+      if (t.type !== 'expense' && t.type !== 'income') return;
+      if (!last || (t.createdAt || '') > (last.createdAt || '')) last = t;
+    });
+    if (last && last.withdrawDate >= today) return last.withdrawDate;
+    return '';
+  };
+
+  /**
+   * カード × 引き落とし日ごとの合計
+   * 合計 = 支出の合計 − 収入（返品など）の合計
+   */
+  C.groups = function (model, cardId) {
+    const card = model.accById.get(cardId);
+    if (!B.isAutoCard(card, model.accById)) return [];
+    const map = new Map();
+    model.data.transactions.forEach((t) => {
+      if (t.accountId !== cardId || !t.withdrawDate) return;
+      if (t.type !== 'expense' && t.type !== 'income') return;
+      if (!map.has(t.withdrawDate))
+        map.set(t.withdrawDate, { cardId, date: t.withdrawDate, total: 0, count: 0, items: [] });
+      const g = map.get(t.withdrawDate);
+      g.total += t.type === 'expense' ? t.amount : -t.amount;
+      g.count++;
+      g.items.push(t);
+    });
+    const bankId = card.settlementAccountId;
+    const groups = [...map.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+    groups.forEach((g) => {
+      g.items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      const bal = B.balanceAt(model, bankId, g.date, 'end');
+      g.bankBalance = bal;
+      g.insufficient = bal.status !== 'unknown' && bal.value < 0;
+    });
+    return groups;
+  };
+
+  /** 今日以降で最も近い引き落とし（ホーム用） */
+  C.nextGroup = function (model, cardId, today) {
+    return C.groups(model, cardId).find((g) => g.date >= today) || null;
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 月次・年次集計（設計書「5. 月次集計」「7. 年次集計」） */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = KB.balance;
+  const R = (KB.report = {});
+
+  /**
+   * 期間 [from, to] の集計
+   * 期首残高 = from の朝時点、期末残高 = to の夜時点
+   * 恒等式：期首 ＋ 収入 − 支出 ＋ 調整 ＋ 未調整の差額 ＝ 期末
+   */
+  R.period = function (model, from, to) {
+    const k0 = B.queryKey(from, 'start');
+    const k1 = B.queryKey(to, 'end');
+    const inRange = (k) => k > k0 && k <= k1;
+    let income = 0, expense = 0, adjust = 0, unadjusted = 0;
+    const expByCat = new Map(), incByCat = new Map();
+
+    model.data.transactions.forEach((t) => {
+      if (t.type === 'income' || t.type === 'expense') {
+        if (!inRange(B.txKey(t.date))) return;
+        const map = t.type === 'income' ? incByCat : expByCat;
+        map.set(t.categoryId, (map.get(t.categoryId) || 0) + t.amount);
+        if (t.type === 'income') income += t.amount;
+        else expense += t.amount;
+      } else if (t.type === 'adjust') {
+        const s = model.snapById.get(t.snapshotId);
+        const key = s ? B.snapKey(s) - 1 : B.txKey(t.date);
+        if (inRange(key)) adjust += t.amount;
+      }
+    });
+    model.diffs.forEach((d) => {
+      if (!d.first && inRange(d.key)) unadjusted += d.diff;
+    });
+
+    const accIds = [...model.perAcc.keys()];
+    const open = B.totalAt(model, from, 'start', accIds);
+    const close = B.totalAt(model, to, 'end', accIds);
+    const byAccount = model.data.accounts.map((a) => ({
+      account: a,
+      open: B.balanceAt(model, a.id, from, 'start'),
+      close: B.balanceAt(model, a.id, to, 'end'),
+    }));
+    return { from, to, income, expense, net: income - expense, adjust, unadjusted, open, close, byAccount, expByCat, incByCat };
+  };
+
+  R.month = (model, y, m) => R.period(model, U.monthStart(y, m), U.monthEnd(y, m));
+
+  /** 年次：年間サマリー・月別推移・カテゴリ×月 */
+  R.year = function (model, y) {
+    const total = R.period(model, `${y}-01-01`, `${y}-12-31`);
+    const months = [];
+    for (let m = 1; m <= 12; m++) months.push(R.month(model, y, m));
+    const catTable = (kind) => {
+      const key = kind === 'expense' ? 'expByCat' : 'incByCat';
+      const cats = model.data.categories.filter((c) => c.kind === kind);
+      const ids = new Set(cats.map((c) => c.id));
+      // 削除済みカテゴリ等の取引も落とさない
+      months.forEach((mo) => mo[key].forEach((_, id) => ids.add(id)));
+      return [...ids]
+        .map((id) => {
+          const cat = model.catById.get(id);
+          const vals = months.map((mo) => mo[key].get(id) || 0);
+          return { id, name: cat ? cat.name : '（未分類）', order: cat ? cat.order : 9999, vals, total: U.sum(vals) };
+        })
+        .filter((r) => r.total !== 0 || (model.catById.get(r.id) && !model.catById.get(r.id).archived))
+        .sort((a, b) => a.order - b.order);
+    };
+    return { year: y, total, months, expenseRows: catTable('expense'), incomeRows: catTable('income') };
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 出納帳（設計書「8. 出納帳」） */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const B = KB.balance;
+  const L = (KB.ledger = {});
+
+  L.bookName = (kind) =>
+    ({ cash: '現金出納帳', bank: '預金出納帳', emoney: '電子マネー出納帳', credit: 'カード利用帳' }[kind] || '出納帳');
+
+  function txDesc(model, ev) {
+    const t = ev.tx;
+    const memo = t.memo ? '　' + t.memo : '';
+    if (ev.kind === 'adjust') return '残高調整（使途不明）' + memo;
+    if (t.type === 'transfer') {
+      if (ev.dir === 'out') {
+        const to = model.accById.get(t.toAccountId);
+        return (to ? to.name : '（不明な口座）') + 'へ振替' + memo;
+      }
+      const from = model.accById.get(t.accountId);
+      return (from ? from.name : '（不明な口座）') + 'から振替' + memo;
+    }
+    const cat = model.catById.get(t.categoryId);
+    let s = (cat ? cat.name : '（未分類）') + memo;
+    if (t.withdrawDate && B.isAutoCard(model.accById.get(t.accountId), model.accById))
+      s += `（引落 ${U.md(t.withdrawDate)}）`;
+    return s;
+  }
+
+  /**
+   * 行の種類
+   *   carry      … 繰越（期首・期末）
+   *   entry      … 取引（txId があれば編集できる）
+   *   start      … 残高登録（ここから開始）
+   *   gap        … 残高差額（未調整）
+   *   monthTotal … 月計
+   *   cumTotal   … 累計
+   * mark: 'ok'（照合済） / 'diff'（差額あり）
+   */
+  L.build = function (model, accId, from, to) {
+    const acc = model.accById.get(accId);
+    const p = model.perAcc.get(accId);
+    const k0 = B.queryKey(from, 'start');
+    const k1 = B.queryKey(to, 'end');
+    const fullYear = from.slice(5) === '01-01' && to.slice(5) === '12-31' && from.slice(0, 4) === to.slice(0, 4);
+    const open = B.balanceAtKey(model, accId, k0);
+    const rows = [];
+    rows.push({
+      type: 'carry', date: from, desc: fullYear ? '前年より繰越' : '前期より繰越',
+      balance: open.value, status: open.status,
+    });
+    let running = open.value;
+    let monthIn = 0, monthOut = 0, cumIn = 0, cumOut = 0;
+    let curMonth = null;
+    let lastEntry = rows[0];
+
+    const closeMonth = () => {
+      if (curMonth == null) return;
+      rows.push({ type: 'monthTotal', ym: curMonth, in: monthIn, out: monthOut });
+      rows.push({ type: 'cumTotal', ym: curMonth, in: cumIn, out: cumOut });
+      monthIn = monthOut = 0;
+    };
+    const addEntry = (row) => {
+      const ym = U.ym(row.date);
+      if (curMonth !== ym) {
+        closeMonth();
+        curMonth = ym;
+      }
+      const delta = (row.in || 0) - (row.out || 0);
+      if (running != null) running += delta;
+      row.balance = running;
+      monthIn += row.in || 0; monthOut += row.out || 0;
+      cumIn += row.in || 0; cumOut += row.out || 0;
+      rows.push(row);
+      lastEntry = row;
+    };
+
+    // 期間内の取引とチェックポイントを時点順に並べる
+    const evs = p ? p.events.filter((e) => e.key > k0 && e.key <= k1) : [];
+    const snaps = p ? p.snaps.filter((s) => s.key > k0 && s.key <= k1) : [];
+    let si = 0;
+    const flushSnapsUpTo = (key) => {
+      while (si < snaps.length && snaps[si].key <= key) {
+        const s = snaps[si++];
+        const d = model.diffs.get(s.snap.id);
+        if (d.first) {
+          if (open.status !== 'exact') {
+            addEntry({ type: 'start', date: s.snap.date, desc: `残高登録 ${U.yen(s.snap.amount)}（ここから開始）` });
+            running = s.snap.amount;
+            lastEntry.balance = running;
+            lastEntry.mark = 'ok';
+          } else lastEntry.mark = 'ok';
+        } else if (d.diff !== 0) {
+          addEntry({
+            type: 'gap', date: s.snap.date, desc: '残高差額（未調整）',
+            in: d.diff > 0 ? d.diff : 0, out: d.diff < 0 ? -d.diff : 0, mark: 'diff', diff: d.diff,
+          });
+          running = s.snap.amount;
+          lastEntry.balance = running;
+        } else lastEntry.mark = 'ok';
+      }
+    };
+
+    const used = new Set();
+    for (let i = 0; i < evs.length; i++) {
+      if (used.has(i)) continue;
+      const e = evs[i];
+      flushSnapsUpTo(e.key - 1);
+      if (e.kind === 'wd') {
+        // 同じ日・同じカードの引き落としは1行にまとめる
+        let delta = e.delta, n = 1;
+        for (let j = i + 1; j < evs.length && evs[j].key === e.key; j++) {
+          if (evs[j].kind === 'wd' && evs[j].card === e.card) {
+            delta += evs[j].delta;
+            n++;
+            used.add(j);
+          }
+        }
+        const date = e.tx.withdrawDate;
+        let desc;
+        if (e.card === accId) {
+          const bank = model.accById.get(acc.settlementAccountId);
+          desc = `引き落とし（${bank ? bank.name : ''}）`;
+        } else {
+          const card = model.accById.get(e.card);
+          desc = `${card ? card.name : 'カード'} 引き落とし（${n}件）`;
+        }
+        addEntry({ type: 'entry', date, desc, in: delta > 0 ? delta : 0, out: delta < 0 ? -delta : 0, withdraw: { card: e.card, date } });
+      } else {
+        addEntry({
+          type: 'entry', date: e.kind === 'adjust' ? e.tx.date : e.tx.date, desc: txDesc(model, e),
+          in: e.delta > 0 ? e.delta : 0, out: e.delta < 0 ? -e.delta : 0,
+          txId: e.kind === 'tx' ? e.tx.id : null, adjust: e.kind === 'adjust',
+        });
+      }
+    }
+    flushSnapsUpTo(k1);
+    closeMonth();
+    rows.push({
+      type: 'carry', date: to, desc: fullYear ? '次年へ繰越' : '次期へ繰越', balance: running,
+      status: running == null ? 'unknown' : 'exact',
+    });
+    return { account: acc, name: L.bookName(acc && acc.kind), from, to, open, rows, totalIn: cumIn, totalOut: cumOut };
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 保存（IndexedDB）。使えない環境ではメモリだけで動き、画面に警告を出す */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const DB_NAME = 'kakeibo';
+  const DB_VERSION = 1;
+  const STORES = ['accounts', 'categories', 'transactions', 'snapshots'];
+  const D = (KB.db = { persistent: false, error: null });
+  let db = null;
+
+  // 全データ（削除印付きも含む）
+  KB.state = { accounts: [], categories: [], transactions: [], snapshots: [], settings: {} };
+
+  function req2p(r) {
+    return new Promise((res, rej) => {
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+
+  D.open = function () {
+    return new Promise((resolve) => {
+      let r;
+      try {
+        if (typeof indexedDB === 'undefined') throw new Error('IndexedDB がありません');
+        r = indexedDB.open(DB_NAME, DB_VERSION);
+      } catch (e) {
+        D.error = e;
+        return resolve(false);
+      }
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        STORES.forEach((s) => {
+          if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' });
+        });
+        if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
+      };
+      r.onsuccess = () => {
+        db = r.result;
+        D.persistent = true;
+        resolve(true);
+      };
+      r.onerror = () => {
+        D.error = r.error;
+        resolve(false);
+      };
+      r.onblocked = () => {
+        D.error = new Error('他のタブで古い版が開かれています');
+        resolve(false);
+      };
+    });
+  };
+
+  D.loadAll = async function () {
+    if (!db) return;
+    const t = db.transaction(STORES.concat('settings'), 'readonly');
+    for (const s of STORES) KB.state[s] = await req2p(t.objectStore(s).getAll());
+    const settings = await req2p(t.objectStore('settings').getAll());
+    KB.state.settings = {};
+    settings.forEach((x) => (KB.state.settings[x.key] = x.value));
+  };
+
+  function writeMany(ops) {
+    if (!db) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const names = [...new Set(ops.map((o) => o.store))];
+      const t = db.transaction(names, 'readwrite');
+      ops.forEach((o) => {
+        if (o.clear) t.objectStore(o.store).clear();
+        else t.objectStore(o.store).put(o.rec);
+      });
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error || new Error('保存が中断されました'));
+    });
+  }
+
+  /** 新規・更新（id・作成日時・更新日時を付ける）。recs は [store, rec] の配列 */
+  D.saveMany = async function (pairs) {
+    const now = U.now();
+    const ops = pairs.map(([store, rec]) => {
+      if (!rec.id) rec.id = U.uuid();
+      if (!rec.createdAt) rec.createdAt = now;
+      rec.updatedAt = now;
+      return { store, rec };
+    });
+    await writeMany(ops);
+    ops.forEach(({ store, rec }) => {
+      const arr = KB.state[store];
+      const i = arr.findIndex((x) => x.id === rec.id);
+      if (i >= 0) arr[i] = rec;
+      else arr.push(rec);
+    });
+    KB.invalidate();
+  };
+  D.save = (store, rec) => D.saveMany([[store, rec]]);
+
+  /** 削除（同期に備えて実際には消さず、削除印を付ける） */
+  D.removeMany = function (pairs) {
+    return D.saveMany(pairs.map(([store, rec]) => [store, Object.assign({}, rec, { deleted: true })]));
+  };
+  D.remove = (store, rec) => D.removeMany([[store, rec]]);
+
+  D.setSetting = async function (key, value) {
+    KB.state.settings[key] = value;
+    await writeMany([{ store: 'settings', rec: { key, value } }]);
+  };
+
+  /** 全データの置き換え（バックアップからの復元・全削除） */
+  D.replaceAll = async function (data) {
+    const ops = [];
+    STORES.forEach((s) => {
+      ops.push({ store: s, clear: true });
+      (data[s] || []).forEach((rec) => ops.push({ store: s, rec }));
+    });
+    await writeMany(ops);
+    STORES.forEach((s) => (KB.state[s] = (data[s] || []).slice()));
+    KB.invalidate();
+  };
+
+  /** 削除印のないデータと計算モデル（変更があるまで使い回す） */
+  let cache = null;
+  KB.invalidate = () => (cache = null);
+  KB.live = function () {
+    if (cache) return cache;
+    const alive = (r) => !r.deleted;
+    const byOrder = (a, b) => (a.order || 0) - (b.order || 0) || ((a.createdAt || '') < (b.createdAt || '') ? -1 : 1);
+    const data = {
+      accounts: KB.state.accounts.filter(alive).sort(byOrder),
+      categories: KB.state.categories.filter(alive).sort(byOrder),
+      transactions: KB.state.transactions.filter(alive),
+      snapshots: KB.state.snapshots.filter(alive),
+    };
+    cache = { data, model: KB.balance.buildModel(data) };
+    return cache;
+  };
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* バックアップ（JSON）・CSV出力・初期データ */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const IO = (KB.io = {});
+  const VERSION = 1;
+
+  IO.DEFAULT_CATEGORIES = [
+    ['食費', 'expense', '#e5534b'], ['日用品', 'expense', '#d4a72c'], ['交通費', 'expense', '#3e8ed0'],
+    ['住居費', 'expense', '#8256d0'], ['光熱費', 'expense', '#e0823d'], ['通信費', 'expense', '#2da44e'],
+    ['娯楽', 'expense', '#bf3989'], ['その他', 'expense', '#8c959f'],
+    ['給与', 'income', '#1a7f37'], ['その他', 'income', '#6e7781'],
+  ];
+
+  IO.defaultCategories = () =>
+    IO.DEFAULT_CATEGORIES.map(([name, kind, color], i) => ({ id: U.uuid(), name, kind, color, order: i + 1 }));
+
+  IO.exportJSON = function () {
+    const s = KB.state;
+    return JSON.stringify(
+      {
+        app: 'kakeibo', version: VERSION, exportedAt: U.now(),
+        accounts: s.accounts, categories: s.categories, transactions: s.transactions, snapshots: s.snapshots,
+      },
+      null, 1
+    );
+  };
+
+  /** 復元前の検査。問題があれば error を返す */
+  IO.parseBackup = function (text) {
+    let d;
+    try {
+      d = JSON.parse(text);
+    } catch (e) {
+      return { error: 'JSONファイルとして読めません' };
+    }
+    if (!d || d.app !== 'kakeibo') return { error: 'この家計簿のバックアップファイルではありません' };
+    if (typeof d.version !== 'number' || d.version > VERSION)
+      return { error: `対応していない版のファイルです（版 ${d.version}）。アプリを最新にしてください` };
+    for (const k of ['accounts', 'categories', 'transactions', 'snapshots'])
+      if (!Array.isArray(d[k])) return { error: `ファイルの中身が足りません（${k}）` };
+    const bad = [].concat(d.accounts, d.categories, d.transactions, d.snapshots).find((r) => !r || typeof r.id !== 'string');
+    if (bad) return { error: 'ファイルの中に壊れたデータがあります' };
+    const alive = (a) => a.filter((r) => !r.deleted).length;
+    return { data: d, summary: { accounts: alive(d.accounts), transactions: alive(d.transactions), snapshots: alive(d.snapshots), exportedAt: d.exportedAt } };
+  };
+
+  const TYPE = { income: '収入', expense: '支出', transfer: '振替', adjust: '調整' };
+
+  /** 全取引のCSV */
+  IO.transactionsCSV = function () {
+    const { data, model } = KB.live();
+    const name = (id, map) => (map.get(id) ? map.get(id).name : '');
+    const rows = [['日付', '種類', '金額', '口座', '振替先', 'カテゴリ', '引き落とし日', 'メモ']];
+    data.transactions
+      .slice()
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || '') < (b.createdAt || '') ? -1 : 1))
+      .forEach((t) =>
+        rows.push([
+          t.date, TYPE[t.type] || t.type, t.amount, name(t.accountId, model.accById), name(t.toAccountId, model.accById),
+          name(t.categoryId, model.catById), t.withdrawDate || '', t.memo || '',
+        ])
+      );
+    return U.csv(rows);
+  };
+
+  IO.TYPE = TYPE;
+})(typeof window !== 'undefined' ? (window.KB = window.KB || {}) : (globalThis.KB = globalThis.KB || {}));
+
+</script>
+<script>
+/* 画面切替・共通部品 */
+(function (KB) {
+  'use strict';
+  const U = KB.util;
+  const UI = (KB.ui = { views: {} });
+
+  UI.NAV = [
+    ['', 'ホーム'], ['list', '取引一覧'], ['balance', '残高'], ['withdraw', '引き落とし'],
+    ['report', '月次'], ['annual', '年次'], ['ledger', '出納帳'], ['config', '設定'],
+  ];
+  UI.KIND = { cash: '現金', bank: '銀行', emoney: '電子マネー', credit: 'クレジットカード', other: 'その他' };
+
+  /* ---------- ルーティング（URL の # で切替） ---------- */
+  // 形式：#home / #list / #report-2026-11 / #annual-2026（英数字とハイフンのみ）
+  UI.parseHash = function () {
+    const h = location.hash.replace(/^#\/?/, '');
+    const parts = h.split('-');
+    const path = parts[0] === 'home' ? '' : parts[0];
+    return { path, params: { y: parts[1], m: parts[2] } };
+  };
+  UI.go = (path) => {
+    const h = '#' + (path || 'home');
+    if (location.hash === h) UI.render();
+    else location.hash = h;
+  };
+
+  UI.render = function () {
+    const root = document.getElementById('app');
+    const { data } = KB.live();
+    const nav = document.getElementById('nav');
+    const fab = document.getElementById('fab');
+    if (data.accounts.length === 0) {
+      nav.innerHTML = '';
+      fab.hidden = true;
+      UI.views.setup(root);
+      return;
+    }
+    fab.hidden = false;
+    const { path, params } = UI.parseHash();
+    const view = UI.views[path || 'home'] || UI.views.home;
+    nav.innerHTML = UI.NAV.map(
+      ([p, label]) => `<a href="#${p || 'home'}" class="${p === path || (!UI.views[path] && p === '') ? 'active' : ''}">${label}</a>`
+    ).join('');
+    const active = nav.querySelector('.active');
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    try {
+      view(root, params);
+    } catch (e) {
+      console.error(e);
+      root.innerHTML = `<div class="card error">画面の表示中にエラーが起きました：${U.esc(e.message)}</div>`;
+    }
+  };
+
+  /* ---------- ダイアログ ---------- */
+  function makeDialog(id) {
+    let d = document.getElementById(id);
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = id;
+      document.body.appendChild(d);
+    }
+    return d;
+  }
+
+  /** opts: { title, body(html), wide, onMount(el, close) } */
+  UI.openDialog = function (opts) {
+    const d = makeDialog('dlg');
+    d.className = opts.wide ? 'wide' : '';
+    d.innerHTML = `<form method="dialog" class="dlg" novalidate>
+      <div class="dlg-head"><h2>${U.esc(opts.title)}</h2><button type="button" class="icon-btn" data-close aria-label="閉じる">×</button></div>
+      <div class="dlg-body">${opts.body}</div></form>`;
+    const close = () => {
+      if (d.open) d.close();
+    };
+    d.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
+    d.onclick = (e) => {
+      if (e.target === d) close();
+    };
+    if (!d.open) d.showModal();
+    if (opts.onMount) opts.onMount(d, close);
+    return { el: d, close };
+  };
+
+  /** 確認ダイアログ（入力ダイアログの上に重ねられる） → Promise<boolean> */
+  UI.confirm = function (message, opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+      const d = makeDialog('dlg-confirm');
+      d.className = 'confirm';
+      d.innerHTML = `<div class="dlg"><div class="dlg-body"><p class="confirm-msg">${U.esc(message).replace(/\n/g, '<br>')}</p>
+        <div class="actions"><button type="button" class="btn" data-no>${U.esc(opts.cancelLabel || 'キャンセル')}</button>
+        <button type="button" class="btn ${opts.danger ? 'danger' : 'primary'}" data-yes>${U.esc(opts.okLabel || 'OK')}</button></div></div></div>`;
+      const done = (v) => {
+        d.close();
+        resolve(v);
+      };
+      d.querySelector('[data-yes]').onclick = () => done(true);
+      d.querySelector('[data-no]').onclick = () => done(false);
+      d.oncancel = (e) => {
+        e.preventDefault();
+        done(false);
+      };
+      d.showModal();
+      d.querySelector('[data-yes]').focus();
+    });
+  };
+
+  UI.toast = function (msg, kind) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show ' + (kind || '');
+    clearTimeout(UI._toastTimer);
+    UI._toastTimer = setTimeout(() => (t.className = ''), 2600);
+  };
+
+  /** 保存処理を包み、失敗時はメッセージを出す */
+  UI.guard = async function (fn) {
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      console.error(e);
+      UI.toast('保存に失敗しました。バックアップを取ってください（' + (e && e.message ? e.message : e) + '）', 'error');
+      return false;
+    }
+  };
+
+  /* ---------- 表示用の小物 ---------- */
+  UI.balanceHTML = function (b, opts) {
+    if (!b || b.status === 'unknown') return '<span class="muted">不明</span>';
+    const tag = b.status === 'estimated' ? ' <span class="tag est" title="後の残高登録から逆算した推定値">推定</span>' : '';
+    return `<span class="amt ${b.value < 0 ? 'neg' : ''}">${U.yen(b.value)}</span>${opts && opts.noTag ? '' : tag}`;
+  };
+  UI.signed = (v, kind) => {
+    if (kind === 'income') return `<span class="amt inc">+${U.num(v)}</span>`;
+    if (kind === 'expense') return `<span class="amt exp">−${U.num(v)}</span>`;
+    return `<span class="amt">${U.num(v)}</span>`;
+  };
+  UI.accountOptions = (accounts, selected, opts) =>
+    (opts && opts.empty ? `<option value="">${U.esc(opts.empty)}</option>` : '') +
+    accounts.map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${U.esc(a.name)}${a.archived ? '（非表示）' : ''}</option>`).join('');
+  UI.categoryOptions = (cats, selected) =>
+    cats.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${U.esc(c.name)}${c.archived ? '（非表示）' : ''}</option>`).join('');
+
+  UI.fieldError = function (root, name, msg) {
+    const el = root.querySelector(`[data-err="${name}"]`);
+    if (el) {
+      el.textContent = msg || '';
+      el.hidden = !msg;
+    }
+  };
+
+  /** 一覧テーブルのCSV/印刷ボタン */
+  UI.toolButtons = (id) =>
+    `<div class="tools no-print"><button type="button" class="btn small" data-print="${id}" title="${U.inViewer() ? '印刷用のファイルを保存します。開くと印刷画面になります' : '印刷またはPDFに保存'}">${U.inViewer() ? '印刷用に保存' : '印刷・PDF'}</button>
+     <button type="button" class="btn small" data-csv="${id}">CSV</button></div>`;
+
+  UI.bindTools = function (root, handlers) {
+    root.querySelectorAll('[data-print]').forEach((b) => (b.onclick = () => UI.print(b.dataset.print)));
+    root.querySelectorAll('[data-csv]').forEach((b) => (b.onclick = () => handlers[b.dataset.csv] && handlers[b.dataset.csv]()));
+  };
+
+  const PRINT_CSS = `body{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;color:#000;font-size:10pt;margin:0;font-feature-settings:"tnum" 1}
+    table{border-collapse:collapse;width:100%}th,td{padding:3px 5px;border-bottom:.5pt solid #999;text-align:left;vertical-align:top}
+    thead th{border-bottom:1pt solid #333;font-size:9pt}.r{text-align:right}.nowrap{white-space:nowrap}
+    .card-head,.tools,.no-print,.hint,.icon-btn{display:none!important}.print-only{display:block!important}
+    h1{font-size:14pt;margin:0 0 3mm}h3{font-size:11pt;margin:5mm 0 2mm}p{margin:0 0 3mm}
+    .tag{font-size:7.5pt;border:.5pt solid #777;border-radius:3px;padding:0 3px;margin-left:3px}.sub{font-size:8pt;color:#555}
+    .muted{color:#555}.neg{color:#b42318}.mark{font-size:7.5pt;font-weight:700}.total td,.total th,tr.carry td,tr.subtotal td{font-weight:700}
+    tr.cumtotal td{color:#555;font-size:8.5pt}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+    .bar{display:block;height:8px;border-radius:4px}.dot,.bar{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+    a{color:inherit;text-decoration:none}thead{display:table-header-group}tr{page-break-inside:avoid}`;
+
+  /** 印刷用の単独HTMLを作って保存する（claude.ai の中では印刷が使えないため） */
+  UI.savePrintFile = async function (el) {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('.tools,.no-print').forEach((x) => x.remove());
+    const h = clone.querySelector('.print-only h1, h1.print-only');
+    const title = (h ? h.textContent : document.title).trim();
+    const wide = el.classList.contains('print-wide');
+    const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${U.esc(title)}</title>
+      <style>@page{size:A4 ${wide ? 'landscape' : 'portrait'};margin:12mm}${PRINT_CSS}</style></head>
+      <body>${clone.innerHTML}<script>window.addEventListener('load',function(){setTimeout(function(){window.print()},300)})<\/script></body></html>`;
+    const r = await U.download(`${title.replace(/[\\/:*?"<>|]/g, '_')}.html`, html, 'text/html');
+    if (r === 'saved') UI.toast('印刷用のファイルを保存しました。開くと印刷画面になります（PDF保存も可）');
+  };
+
+  /** 指定した部分だけを印刷する（その他は印刷時に隠す） */
+  UI.print = function (sectionId) {
+    if (U.inViewer()) {
+      const el = document.getElementById(sectionId);
+      if (el) UI.savePrintFile(el);
+      return;
+    }
+    document.body.classList.add('printing-section');
+    document.querySelectorAll('.print-target').forEach((e) => e.classList.remove('print-target'));
+    const el = sectionId ? document.getElementById(sectionId) : null;
+    if (el) el.classList.add('print-target');
+    else document.body.classList.remove('printing-section');
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        document.body.classList.remove('printing-section');
+        if (el) el.classList.remove('print-target');
+      }, 500);
+    }, 50);
+  };
+
+  UI.monthNav = (y, m) => {
+    let py = y, pm = m - 1, ny = y, nm = m + 1;
+    if (pm < 1) { pm = 12; py--; }
+    if (nm > 12) { nm = 1; ny++; }
+    return { prev: [py, pm], next: [ny, nm] };
+  };
+
+  UI.thisYM = () => {
+    const t = U.todayStr();
+    return [+t.slice(0, 4), +t.slice(5, 7)];
+  };
+})(window.KB = window.KB || {});
+
+</script>
+<script>
+/* 入力ダイアログ：取引・残高登録・口座・カテゴリ */
+(function (KB) {
+  'use strict';
+  const U = KB.util, UI = KB.ui, B = KB.balance, C = KB.credit, D = KB.db;
+  const A = (KB.actions = {});
+  const memory = { type: 'expense', date: null, acc: {}, cat: {} }; // 続けて入力用の前回値
+
+  /* ================= 取引入力 ================= */
+  A.openTx = function (existing, preset) {
+    const { data, model } = KB.live();
+    if (existing && existing.type === 'adjust') {
+      UI.toast('残高調整は「残高」画面で操作します');
+      return UI.go('balance');
+    }
+    const isEdit = !!existing;
+    const t = Object.assign(
+      { type: memory.type, date: memory.date || U.todayStr(), amount: '', memo: '' },
+      preset || {},
+      existing ? JSON.parse(JSON.stringify(existing)) : {}
+    );
+    const activeAccs = data.accounts.filter((a) => !a.archived || a.id === t.accountId || a.id === t.toAccountId);
+
+    const body = `
+      <div class="seg" role="radiogroup" aria-label="種類">
+        ${[['expense', '支出'], ['income', '収入'], ['transfer', '振替']].map(([v, l]) =>
+          `<label><input type="radio" name="type" value="${v}" ${t.type === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+      </div>
+      <div class="grid2">
+        <label class="field"><span>日付</span><input type="date" name="date" value="${t.date}" required>
+          <small class="err" data-err="date" hidden></small><small class="warn" data-warn="date" hidden></small></label>
+        <label class="field"><span>金額（円）</span><input type="text" name="amount" inputmode="numeric" autocomplete="off" value="${t.amount}" placeholder="例 1200">
+          <small class="err" data-err="amount" hidden></small></label>
+      </div>
+      <label class="field"><span data-label="account">口座</span><select name="accountId">${UI.accountOptions(activeAccs, t.accountId)}</select>
+        <small class="err" data-err="accountId" hidden></small></label>
+      <label class="field" data-show="transfer"><span>振替先</span><select name="toAccountId">${UI.accountOptions(activeAccs, t.toAccountId, { empty: '選んでください' })}</select>
+        <small class="err" data-err="toAccountId" hidden></small><small class="warn" data-warn="toAccountId" hidden></small></label>
+      <label class="field" data-show="cat"><span>カテゴリ</span><select name="categoryId"></select>
+        <small class="err" data-err="categoryId" hidden></small></label>
+      <label class="field" data-show="wd"><span>引き落とし日</span><input type="date" name="withdrawDate" value="${t.withdrawDate || ''}">
+        <small class="hint">初期値は同じカードの直前の引き落とし日です。変えるときはカレンダーから選んでください。</small>
+        <small class="err" data-err="withdrawDate" hidden></small></label>
+      <label class="field"><span>メモ</span><input type="text" name="memo" value="${U.esc(t.memo || '')}" maxlength="200"></label>
+      <div class="actions">
+        ${isEdit ? '<button type="button" class="btn danger-ghost" data-act="delete">削除</button><span class="spacer"></span>' : ''}
+        <button type="button" class="btn" data-close>キャンセル</button>
+        ${isEdit ? '' : '<button type="button" class="btn" data-act="again">保存して続けて入力</button>'}
+        <button type="submit" class="btn primary" data-act="save">保存</button>
+      </div>`;
+
+    UI.openDialog({
+      title: isEdit ? '取引の編集' : '取引の入力',
+      body,
+      onMount(el, close) {
+        const f = el.querySelector('form');
+        const $ = (n) => f.elements[n];
+        let wdTouched = !!(isEdit && t.withdrawDate);
+
+        const type = () => f.querySelector('input[name=type]:checked').value;
+        const isAutoCard = () => B.isAutoCard(model.accById.get($('accountId').value), model.accById);
+        const fillCats = () => {
+          const k = type();
+          if (k === 'transfer') return;
+          const cur = $('categoryId').value || (t.type === k ? t.categoryId : memory.cat[k]);
+          const cats = data.categories.filter((c) => c.kind === k && (!c.archived || c.id === cur));
+          $('categoryId').innerHTML = UI.categoryOptions(cats, cats.some((c) => c.id === cur) ? cur : cats[0] && cats[0].id);
+        };
+        const setDefaultWd = () => {
+          if (wdTouched) return;
+          $('withdrawDate').value = C.defaultWithdrawDate(data.transactions, $('accountId').value, U.todayStr(), existing && existing.id);
+        };
+        const refresh = () => {
+          const k = type();
+          f.querySelector('[data-show=transfer]').hidden = k !== 'transfer';
+          f.querySelector('[data-show=cat]').hidden = k === 'transfer';
+          f.querySelector('[data-label=account]').textContent = k === 'transfer' ? '出金元' : '口座';
+          const showWd = k !== 'transfer' && isAutoCard();
+          f.querySelector('[data-show=wd]').hidden = !showWd;
+          if (showWd) setDefaultWd();
+          $('withdrawDate').min = $('date').value || '';
+          const fut = $('date').value && $('date').value > U.todayStr();
+          const w = f.querySelector('[data-warn=date]');
+          w.hidden = !fut;
+          w.textContent = fut ? '未来の日付です（このまま保存できます）' : '';
+          const to = model.accById.get($('toAccountId').value);
+          const tw = f.querySelector('[data-warn=toAccountId]');
+          const twShow = k === 'transfer' && B.isAutoCard(to, model.accById);
+          tw.hidden = !twShow;
+          tw.textContent = twShow ? 'このカードは引き落とし日に自動で銀行から引かれます。振替を入れると二重になります。' : '';
+          fillCats();
+        };
+        if (!t.accountId) {
+          const remembered = memory.acc[t.type];
+          if (remembered && activeAccs.some((a) => a.id === remembered)) $('accountId').value = remembered;
+        }
+        f.querySelectorAll('input[name=type]').forEach((r) => r.addEventListener('change', () => { $('categoryId').value = ''; refresh(); }));
+        $('accountId').addEventListener('change', () => { wdTouched = false; refresh(); });
+        $('toAccountId').addEventListener('change', refresh);
+        $('date').addEventListener('change', refresh);
+        $('withdrawDate').addEventListener('change', () => (wdTouched = true));
+        refresh();
+        if (!isEdit) setTimeout(() => $('amount').focus(), 50);
+
+        const collect = () => {
+          ['date', 'amount', 'accountId', 'toAccountId', 'categoryId', 'withdrawDate'].forEach((n) => UI.fieldError(f, n, ''));
+          let ok = true;
+          const err = (n, m) => { UI.fieldError(f, n, m); ok = false; };
+          const k = type();
+          const rec = isEdit ? JSON.parse(JSON.stringify(existing)) : {};
+          rec.type = k;
+          rec.date = $('date').value;
+          if (!U.isValidDate(rec.date)) err('date', '日付を入力してください');
+          const a = U.parseAmount($('amount').value);
+          if (a.error) err('amount', a.error);
+          else rec.amount = a.value;
+          rec.accountId = $('accountId').value;
+          if (!rec.accountId) err('accountId', '口座を選んでください');
+          rec.memo = $('memo').value.trim();
+          delete rec.toAccountId; delete rec.categoryId; delete rec.withdrawDate;
+          if (k === 'transfer') {
+            rec.toAccountId = $('toAccountId').value;
+            if (!rec.toAccountId) err('toAccountId', '振替先を選んでください');
+            else if (rec.toAccountId === rec.accountId) err('toAccountId', '出金元と振替先が同じです');
+          } else {
+            rec.categoryId = $('categoryId').value;
+            if (!rec.categoryId) err('categoryId', 'カテゴリを選んでください');
+            if (isAutoCard()) {
+              rec.withdrawDate = $('withdrawDate').value;
+              if (!U.isValidDate(rec.withdrawDate || '')) err('withdrawDate', '引き落とし日を選んでください');
+              else if (rec.date && rec.withdrawDate < rec.date) err('withdrawDate', '引き落とし日は利用日以降の日付にしてください');
+            }
+          }
+          return ok ? rec : null;
+        };
+
+        const save = async (again) => {
+          const rec = collect();
+          if (!rec) return;
+          if (rec.type === 'transfer' && B.isAutoCard(model.accById.get(rec.toAccountId), model.accById)) {
+            const yes = await UI.confirm('このカードは引き落とし日に自動で銀行から引かれます。\n振替も入れると二重に引かれた計算になります。保存しますか？', { okLabel: '保存する' });
+            if (!yes) return;
+          }
+          const ok = await UI.guard(() => D.save('transactions', rec));
+          if (!ok) return;
+          memory.type = rec.type;
+          memory.date = rec.date;
+          memory.acc[rec.type] = rec.accountId;
+          if (rec.categoryId) memory.cat[rec.type] = rec.categoryId;
+          UI.render();
+          if (again) {
+            UI.toast('保存しました。続けて入力できます');
+            const keep = { type: rec.type, date: rec.date, accountId: rec.accountId, categoryId: rec.categoryId, toAccountId: rec.toAccountId };
+            A.openTx(null, keep);
+          } else {
+            close();
+            UI.toast(isEdit ? '変更を保存しました' : '保存しました');
+          }
+        };
+        f.addEventListener('submit', (e) => { e.preventDefault(); save(false); });
+        const again = f.querySelector('[data-act=again]');
+        if (again) again.onclick = () => save(true);
+        const del = f.querySelector('[data-act=delete]');
+        if (del)
+          del.onclick = async () => {
+            if (!(await UI.confirm('この取引を削除しますか？', { okLabel: '削除', danger: true }))) return;
+            if (await UI.guard(() => D.remove('transactions', existing))) {
+              close();
+              UI.render();
+              UI.toast('削除しました');
+            }
+          };
+      },
+    });
+  };
+
+  /* ================= 残高の登録 ================= */
+  A.openSnapshot = function (existing, preset) {
+    const { data, model } = KB.live();
+    const isEdit = !!existing;
+    const s = Object.assign({ date: U.todayStr(), timing: 'end', amount: '', memo: '' }, preset || {}, existing || {});
+    const accs = data.accounts.filter((a) => !a.archived || a.id === s.accountId);
+    const hadAdjust = isEdit && (model.adjBySnap.get(existing.id) || []).length > 0;
+
+    const body = `
+      <p class="hint">財布や通帳を見て、<b>その時点で実際にいくらあったか</b>を登録します。月の途中からでも、何回でも登録できます。</p>
+      <label class="field"><span>口座</span><select name="accountId">${UI.accountOptions(accs, s.accountId)}</select></label>
+      <div class="grid2">
+        <label class="field"><span>日付</span><input type="date" name="date" value="${s.date}"><small class="err" data-err="date" hidden></small></label>
+        <div class="field"><span>いつ時点</span>
+          <div class="seg small">
+            <label><input type="radio" name="timing" value="start" ${s.timing === 'start' ? 'checked' : ''}><span>朝（その日の取引前）</span></label>
+            <label><input type="radio" name="timing" value="end" ${s.timing !== 'start' ? 'checked' : ''}><span>夜（その日の取引後）</span></label>
+          </div></div>
+      </div>
+      <label class="field"><span>残高（円）</span><input type="text" name="amount" inputmode="numeric" autocomplete="off" value="${s.amount}" placeholder="例 30000（マイナスも可）">
+        <small class="err" data-err="amount" hidden></small></label>
+      <div class="preview" data-preview></div>
+      <label class="check" data-adjust hidden><input type="checkbox" name="adjust" ${hadAdjust ? 'checked' : ''}> 差額を「調整（使途不明）」として記録する</label>
+      <label class="field"><span>メモ</span><input type="text" name="memo" value="${U.esc(s.memo || '')}" maxlength="200"></label>
+      <div class="actions">
+        ${isEdit ? '<button type="button" class="btn danger-ghost" data-act="delete">削除</button><span class="spacer"></span>' : ''}
+        <button type="button" class="btn" data-close>キャンセル</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>`;
+
+    UI.openDialog({
+      title: isEdit ? '残高の編集' : '残高の登録',
+      body,
+      onMount(el, close) {
+        const f = el.querySelector('form');
+        const $ = (n) => f.elements[n];
+        const timing = () => f.querySelector('input[name=timing]:checked').value;
+        const pv = f.querySelector('[data-preview]');
+        const adjBox = f.querySelector('[data-adjust]');
+        const update = () => {
+          const date = $('date').value;
+          if (!U.isValidDate(date) || !$('accountId').value) { pv.innerHTML = ''; adjBox.hidden = true; return; }
+          const r = B.previewSnapshot(data, $('accountId').value, date, timing(), isEdit ? existing.id : null);
+          const a = U.parseAmount($('amount').value, { allowNegative: true });
+          if (r.expected == null) {
+            pv.innerHTML = '<span class="muted">これより前に登録した残高がないため、ここが計算の起点になります。</span>';
+            adjBox.hidden = true;
+            return;
+          }
+          let html = `この時点の帳簿上の残高：<b>${U.yen(r.expected)}</b>`;
+          if (!a.error) {
+            const diff = a.value - r.expected;
+            html += diff === 0
+              ? '<br><span class="ok-text">帳簿と一致しています</span>'
+              : `<br>差額：<b class="${diff < 0 ? 'neg' : ''}">${diff > 0 ? '+' : ''}${U.yen(diff)}</b> <span class="muted">（記入漏れの可能性があります）</span>`;
+            adjBox.hidden = diff === 0;
+          } else adjBox.hidden = true;
+          pv.innerHTML = html;
+        };
+        ['accountId', 'date', 'amount'].forEach((n) => $(n).addEventListener('input', update));
+        f.querySelectorAll('input[name=timing]').forEach((r) => r.addEventListener('change', update));
+        update();
+        if (!isEdit) setTimeout(() => $('amount').focus(), 50);
+
+        f.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          UI.fieldError(f, 'date', ''); UI.fieldError(f, 'amount', '');
+          const date = $('date').value;
+          const a = U.parseAmount($('amount').value, { allowNegative: true });
+          if (!U.isValidDate(date)) return UI.fieldError(f, 'date', '日付を入力してください');
+          if (a.error) return UI.fieldError(f, 'amount', a.error);
+          const rec = isEdit ? Object.assign({}, existing) : {};
+          Object.assign(rec, { accountId: $('accountId').value, date, timing: timing(), amount: a.value, memo: $('memo').value.trim() });
+          const pairs = [];
+          // 同じ口座・日付・時点のチェックポイントがあれば上書き確認
+          const dup = KB.live().data.snapshots.find((x) => x.accountId === rec.accountId && x.date === rec.date && x.timing === rec.timing && x.id !== rec.id);
+          if (dup) {
+            const yes = await UI.confirm(`${U.ymd(date)}（${rec.timing === 'start' ? '朝' : '夜'}）の残高は登録済み（${U.yen(dup.amount)}）です。上書きしますか？`, { okLabel: '上書き' });
+            if (!yes) return;
+            if (isEdit) {
+              pairs.push(['snapshots', Object.assign({}, existing, { deleted: true })]);
+              (model.adjBySnap.get(existing.id) || []).forEach((t) => pairs.push(['transactions', Object.assign({}, t, { deleted: true })]));
+            }
+            rec.id = dup.id;
+            rec.createdAt = dup.createdAt;
+          }
+          pairs.push(['snapshots', rec]);
+          const ok = await UI.guard(async () => {
+            await D.saveMany(pairs);
+            await A.setAdjust(rec.id, $('adjust').checked && !adjBox.hidden);
+          });
+          if (ok) {
+            close();
+            UI.render();
+            UI.toast('残高を登録しました');
+          }
+        });
+        const del = f.querySelector('[data-act=delete]');
+        if (del)
+          del.onclick = async () => {
+            if (!(await UI.confirm('この残高の登録を削除しますか？\n（この登録に付けた調整も削除します）', { okLabel: '削除', danger: true }))) return;
+            const pairs = [['snapshots', existing]].concat((model.adjBySnap.get(existing.id) || []).map((t) => ['transactions', t]));
+            if (await UI.guard(() => D.removeMany(pairs))) {
+              close();
+              UI.render();
+              UI.toast('削除しました');
+            }
+          };
+      },
+    });
+  };
+
+  /** チェックポイントの調整取引を、現在の差額どおりに作り直す（on=false なら消す） */
+  A.setAdjust = async function (snapId, on) {
+    const { model } = KB.live();
+    const d = model.diffs.get(snapId);
+    const adjs = (model.adjBySnap.get(snapId) || []).slice();
+    const pairs = [];
+    if (on && d && !d.first && d.rawDiff !== 0) {
+      const keep = adjs.shift() || { type: 'adjust', snapshotId: snapId, accountId: d.snap.accountId, memo: '' };
+      pairs.push(['transactions', Object.assign({}, keep, { amount: d.rawDiff, date: d.snap.date, accountId: d.snap.accountId })]);
+    }
+    adjs.forEach((t) => pairs.push(['transactions', Object.assign({}, t, { deleted: true })]));
+    if (pairs.length) await D.saveMany(pairs);
+  };
+
+  /* ================= 口座 ================= */
+  A.openAccount = function (existing) {
+    const { data, model } = KB.live();
+    const isEdit = !!existing;
+    const a = Object.assign({ name: '', kind: 'cash', settlementAccountId: '' }, existing || {});
+    const banks = data.accounts.filter((x) => x.kind !== 'credit' && x.id !== a.id && (!x.archived || x.id === a.settlementAccountId));
+    const used = isEdit && (data.transactions.some((t) => t.accountId === a.id || t.toAccountId === a.id) ||
+      data.snapshots.some((s) => s.accountId === a.id) || data.accounts.some((x) => x.settlementAccountId === a.id));
+    const body = `
+      <label class="field"><span>口座名</span><input type="text" name="name" value="${U.esc(a.name)}" maxlength="40" placeholder="例 財布、○○銀行、○○カード">
+        <small class="err" data-err="name" hidden></small></label>
+      <label class="field"><span>種類</span><select name="kind">${Object.entries(UI.KIND).map(([k, l]) => `<option value="${k}" ${a.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field" data-show="credit"><span>引き落とし口座</span>
+        <select name="settlementAccountId">${UI.accountOptions(banks, a.settlementAccountId, { empty: '設定しない（引き落としを自動計算しない）' })}</select>
+        <small class="hint">設定すると、カードの利用分が引き落とし日にこの口座から自動で引かれます。</small></label>
+      ${isEdit ? `<label class="check"><input type="checkbox" name="archived" ${a.archived ? 'checked' : ''}> 使わない口座として非表示にする（過去のデータは残ります）</label>` : ''}
+      <div class="actions">
+        ${isEdit && !used ? '<button type="button" class="btn danger-ghost" data-act="delete">削除</button><span class="spacer"></span>' : ''}
+        <button type="button" class="btn" data-close>キャンセル</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+      ${isEdit && used ? '<p class="hint">取引や残高の登録がある口座は削除できません。使わない場合は非表示にしてください。</p>' : ''}`;
+    UI.openDialog({
+      title: isEdit ? '口座の編集' : '口座の追加',
+      body,
+      onMount(el, close) {
+        const f = el.querySelector('form');
+        const $ = (n) => f.elements[n];
+        const refresh = () => (f.querySelector('[data-show=credit]').hidden = $('kind').value !== 'credit');
+        $('kind').addEventListener('change', refresh);
+        refresh();
+        f.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const name = $('name').value.trim();
+          if (!name) return UI.fieldError(f, 'name', '口座名を入力してください');
+          const rec = Object.assign({}, existing || { order: data.accounts.length + 1 }, { name, kind: $('kind').value });
+          rec.settlementAccountId = rec.kind === 'credit' ? $('settlementAccountId').value || '' : '';
+          if (isEdit) rec.archived = $('archived').checked;
+          if (await UI.guard(() => D.save('accounts', rec))) {
+            close();
+            UI.render();
+            if (!isEdit) {
+              const yes = await UI.confirm(`「${name}」の残高を登録しますか？\n（登録すると、その日からの残高が計算されます）`, { okLabel: '残高を登録', cancelLabel: 'あとで' });
+              if (yes) A.openSnapshot(null, { accountId: rec.id });
+            } else UI.toast('保存しました');
+          }
+        });
+        const del = f.querySelector('[data-act=delete]');
+        if (del)
+          del.onclick = async () => {
+            if (!(await UI.confirm(`口座「${a.name}」を削除しますか？`, { okLabel: '削除', danger: true }))) return;
+            if (await UI.guard(() => D.remove('accounts', existing))) { close(); UI.render(); }
+          };
+      },
+    });
+  };
+
+  /* ================= カテゴリ ================= */
+  A.openCategory = function (existing, kind) {
+    const { data } = KB.live();
+    const isEdit = !!existing;
+    const c = Object.assign({ name: '', kind: kind || 'expense', color: '#8c959f' }, existing || {});
+    const used = isEdit && data.transactions.some((t) => t.categoryId === c.id);
+    const body = `
+      <label class="field"><span>カテゴリ名</span><input type="text" name="name" value="${U.esc(c.name)}" maxlength="30">
+        <small class="err" data-err="name" hidden></small></label>
+      <div class="grid2">
+        <label class="field"><span>種類</span><select name="kind" ${isEdit ? 'disabled' : ''}>
+          <option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>支出</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>収入</option></select></label>
+        <label class="field"><span>色</span><input type="color" name="color" value="${c.color || '#8c959f'}"></label>
+      </div>
+      ${isEdit ? `<label class="check"><input type="checkbox" name="archived" ${c.archived ? 'checked' : ''}> 入力の選択肢から外す（過去の取引には残ります）</label>` : ''}
+      <div class="actions">
+        ${isEdit && !used ? '<button type="button" class="btn danger-ghost" data-act="delete">削除</button><span class="spacer"></span>' : ''}
+        <button type="button" class="btn" data-close>キャンセル</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+      ${isEdit && used ? '<p class="hint">取引で使われているカテゴリは削除できません。不要なら選択肢から外してください。</p>' : ''}`;
+    UI.openDialog({
+      title: isEdit ? 'カテゴリの編集' : 'カテゴリの追加',
+      body,
+      onMount(el, close) {
+        const f = el.querySelector('form');
+        const $ = (n) => f.elements[n];
+        f.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const name = $('name').value.trim();
+          const k = isEdit ? c.kind : $('kind').value;
+          if (!name) return UI.fieldError(f, 'name', 'カテゴリ名を入力してください');
+          if (data.categories.some((x) => x.kind === k && x.name === name && x.id !== c.id))
+            return UI.fieldError(f, 'name', '同じ名前のカテゴリがあります');
+          const rec = Object.assign({}, existing || { order: data.categories.length + 1 }, { name, kind: k, color: $('color').value });
+          if (isEdit) rec.archived = $('archived').checked;
+          if (await UI.guard(() => D.save('categories', rec))) { close(); UI.render(); UI.toast('保存しました'); }
+        });
+        const del = f.querySelector('[data-act=delete]');
+        if (del)
+          del.onclick = async () => {
+            if (!(await UI.confirm(`カテゴリ「${c.name}」を削除しますか？`, { okLabel: '削除', danger: true }))) return;
+            if (await UI.guard(() => D.remove('categories', existing))) { close(); UI.render(); }
+          };
+      },
+    });
+  };
+
+  /** 並べ替え（上へ・下へ） */
+  A.move = async function (store, list, id, dir) {
+    const i = list.findIndex((x) => x.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const arr = list.slice();
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    await UI.guard(() => D.saveMany(arr.map((x, k) => [store, Object.assign({}, x, { order: k + 1 })])));
+    UI.render();
+  };
+})(window.KB = window.KB || {});
+
+</script>
+<script>
+/* 画面：初回起動・ホーム・取引一覧・残高・引き落とし */
+(function (KB) {
+  'use strict';
+  const U = KB.util, UI = KB.ui, B = KB.balance, C = KB.credit, R = KB.report, D = KB.db, A = KB.actions;
+  const V = UI.views;
+
+  const txLabel = (model, t) => {
+    if (t.type === 'transfer') {
+      const to = model.accById.get(t.toAccountId);
+      return `振替 → ${U.esc(to ? to.name : '')}`;
+    }
+    if (t.type === 'adjust') return '残高調整（使途不明）';
+    const c = model.catById.get(t.categoryId);
+    return `<span class="dot" style="background:${U.esc(c && c.color ? c.color : '#8c959f')}"></span>${U.esc(c ? c.name : '（未分類）')}`;
+  };
+  const txAmount = (t) =>
+    t.type === 'income' ? UI.signed(t.amount, 'income') :
+    t.type === 'expense' ? UI.signed(t.amount, 'expense') :
+    t.type === 'adjust' ? `<span class="amt ${t.amount < 0 ? 'exp' : 'inc'}">${t.amount < 0 ? '−' : '+'}${U.num(Math.abs(t.amount))}</span>` :
+    `<span class="amt">${U.num(t.amount)}</span>`;
+
+  function txRows(model, txs) {
+    if (!txs.length) return '<p class="empty">取引はありません</p>';
+    return `<table class="list"><thead><tr><th>日付</th><th>内容</th><th class="hide-sm">口座</th><th class="r">金額</th></tr></thead><tbody>
+      ${txs.map((t) => {
+        const acc = model.accById.get(t.accountId);
+        const wd = t.withdrawDate && B.isAutoCard(acc, model.accById) ? `<span class="tag">引落 ${U.md(t.withdrawDate)}</span>` : '';
+        return `<tr data-tx="${t.id}" class="clickable">
+          <td class="nowrap">${U.mdw(t.date)}</td>
+          <td>${txLabel(model, t)} ${wd}${t.memo ? `<div class="sub">${U.esc(t.memo)}</div>` : ''}<div class="sub show-sm">${U.esc(acc ? acc.name : '')}</div></td>
+          <td class="hide-sm">${U.esc(acc ? acc.name : '')}</td>
+          <td class="r nowrap">${txAmount(t)}</td></tr>`;
+      }).join('')}</tbody></table>`;
+  }
+  function bindTxRows(root, data) {
+    root.querySelectorAll('tr[data-tx]').forEach((tr) =>
+      tr.addEventListener('click', () => A.openTx(data.transactions.find((t) => t.id === tr.dataset.tx)))
+    );
+  }
+  const sortTx = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
+
+  /* ================= 初回起動 ================= */
+  V.setup = function (root) {
+    const today = U.todayStr();
+    root.innerHTML = `<div class="setup card">
+      <h1>はじめに</h1>
+      <p>この家計簿は「<b>いつ時点で、いくらあったか</b>」を登録して始めます。月の途中からでも大丈夫です。</p>
+      <p>まず、財布などの口座を1つ作り、今の残高を入れてください。口座はあとから「設定」で追加できます。</p>
+      <form id="setup-form" novalidate>
+        <div class="grid2">
+          <label class="field"><span>口座名</span><input name="name" value="財布" maxlength="40"><small class="err" data-err="name" hidden></small></label>
+          <label class="field"><span>種類</span><select name="kind">${Object.entries(UI.KIND).filter(([k]) => k !== 'credit').map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+          <label class="field"><span>日付</span><input type="date" name="date" value="${today}"><small class="err" data-err="date" hidden></small></label>
+          <div class="field"><span>いつ時点</span><div class="seg small">
+            <label><input type="radio" name="timing" value="start"><span>朝（その日の取引前）</span></label>
+            <label><input type="radio" name="timing" value="end" checked><span>夜（その日の取引後）</span></label></div></div>
+        </div>
+        <label class="field"><span>その時点の残高（円）</span><input name="amount" inputmode="numeric" placeholder="例 30000"><small class="err" data-err="amount" hidden></small></label>
+        <div class="actions"><button type="submit" class="btn primary">はじめる</button></div>
+      </form>
+      <p class="hint">以前のバックアップがある場合は <a href="#" id="setup-restore">バックアップから復元</a></p>
+      <input type="file" id="setup-file" accept=".json,application/json" hidden>
+    </div>`;
+    const f = root.querySelector('#setup-form');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      ['name', 'date', 'amount'].forEach((n) => UI.fieldError(f, n, ''));
+      const name = f.elements.name.value.trim();
+      const date = f.elements.date.value;
+      const a = U.parseAmount(f.elements.amount.value, { allowNegative: true });
+      let ok = true;
+      if (!name) { UI.fieldError(f, 'name', '口座名を入力してください'); ok = false; }
+      if (!U.isValidDate(date)) { UI.fieldError(f, 'date', '日付を入力してください'); ok = false; }
+      if (a.error) { UI.fieldError(f, 'amount', a.error); ok = false; }
+      if (!ok) return;
+      const acc = { id: U.uuid(), name, kind: f.elements.kind.value, order: 1 };
+      const pairs = [['accounts', acc], ['snapshots', { accountId: acc.id, date, timing: f.querySelector('input[name=timing]:checked').value, amount: a.value, memo: '' }]];
+      if (KB.live().data.categories.length === 0) KB.io.defaultCategories().forEach((c) => pairs.push(['categories', c]));
+      if (await UI.guard(() => D.saveMany(pairs))) {
+        UI.go('');
+        UI.toast('準備ができました。右下の＋から取引を入力できます');
+      }
+    });
+    const file = root.querySelector('#setup-file');
+    root.querySelector('#setup-restore').onclick = (e) => { e.preventDefault(); file.click(); };
+    file.onchange = () => V.restoreFromFile(file);
+  };
+
+  /* ================= ホーム ================= */
+  V.home = function (root) {
+    const { data, model } = KB.live();
+    const today = U.todayStr();
+    const [y, m] = UI.thisYM();
+    const accs = data.accounts.filter((a) => !a.archived);
+    const total = B.totalAt(model, today, 'end', accs.map((a) => a.id));
+    const mon = R.month(model, y, m);
+    const cards = accs.filter((a) => B.isAutoCard(a, model.accById));
+    const diffs = [...model.diffs.values()].filter((d) => !d.first && d.diff !== 0);
+    const recent = data.transactions.filter((t) => t.date <= today).sort(sortTx).slice(0, 10);
+    const lastBackup = KB.state.settings.lastBackupAt;
+    const needBackup = data.transactions.length > 0 && (!lastBackup || U.dayNum(today) - U.dayNum(lastBackup.slice(0, 10)) > 30);
+
+    root.innerHTML = `
+      ${needBackup ? `<div class="notice">${lastBackup ? '最後のバックアップから30日以上たっています。' : 'まだバックアップがありません。'}<a href="#config">設定</a>からバックアップを保存してください。</div>` : ''}
+      ${diffs.length ? `<div class="notice warn">残高の登録に、帳簿との差額が ${diffs.length} 件あります。<a href="#balance">残高画面で確認</a></div>` : ''}
+      <div class="cols">
+        <section class="card">
+          <div class="card-head"><h2>今日の残高</h2><span class="muted">${U.ymd(today)}（${U.weekday(today)}）夜時点</span></div>
+          <table class="kv">${accs.map((a) => `<tr><th>${U.esc(a.name)} <span class="tag kind">${UI.KIND[a.kind]}</span></th>
+            <td class="r">${UI.balanceHTML(B.balanceAt(model, a.id, today, 'end'))}</td></tr>`).join('')}
+            <tr class="total"><th>合計</th><td class="r"><span class="amt ${total.value < 0 ? 'neg' : ''}">${U.yen(total.value)}</span>${total.estimated ? ' <span class="tag est">推定を含む</span>' : ''}</td></tr>
+          </table>
+          ${total.unknown ? `<p class="hint">残高未登録の口座が ${total.unknown} 件あり、合計に含めていません。</p>` : ''}
+          <div class="actions left"><button class="btn" id="home-snap">残高を登録</button></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h2>${m}月の収支</h2><a href="#report-${y}-${m}">月次レポート</a></div>
+          <div class="stats">
+            <div><span>収入</span><b class="inc">${U.yen(mon.income)}</b></div>
+            <div><span>支出</span><b class="exp">${U.yen(mon.expense)}</b></div>
+            <div><span>収支</span><b class="${mon.net < 0 ? 'neg' : ''}">${mon.net > 0 ? '+' : ''}${U.yen(mon.net)}</b></div>
+          </div>
+          ${cards.length ? `<h3>次の引き落とし</h3><table class="kv">${cards.map((c) => {
+            const g = C.nextGroup(model, c.id, today);
+            const bank = model.accById.get(c.settlementAccountId);
+            return `<tr><th>${U.esc(c.name)}<div class="sub">${U.esc(bank ? bank.name : '')}から</div></th><td class="r">${g
+              ? `${U.mdw(g.date)}　<b>${U.yen(g.total)}</b>${g.insufficient ? ' <span class="tag bad">残高不足</span>' : ''}`
+              : '<span class="muted">予定なし</span>'}</td></tr>`;
+          }).join('')}</table>` : ''}
+        </section>
+      </div>
+      <section class="card">
+        <div class="card-head"><h2>最近の取引</h2><a href="#list">すべて見る</a></div>
+        ${txRows(model, recent)}
+      </section>`;
+    root.querySelector('#home-snap').onclick = () => A.openSnapshot();
+    bindTxRows(root, data);
+  };
+
+  /* ================= 取引一覧 ================= */
+  const listFilter = {};
+  V.list = function (root) {
+    const { data, model } = KB.live();
+    const [y, m] = UI.thisYM();
+    const f = Object.assign({ from: U.monthStart(y, m), to: U.monthEnd(y, m), acc: '', cat: '', type: '', q: '' }, listFilter);
+    const q = f.q.trim().toLowerCase();
+    const txs = data.transactions.filter((t) => {
+      if (f.from && t.date < f.from) return false;
+      if (f.to && t.date > f.to) return false;
+      if (f.acc && t.accountId !== f.acc && t.toAccountId !== f.acc) return false;
+      if (f.cat && t.categoryId !== f.cat) return false;
+      if (f.type && t.type !== f.type) return false;
+      if (q) {
+        const c = model.catById.get(t.categoryId);
+        const hay = [(t.memo || ''), c ? c.name : '', String(t.amount)].join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    }).sort(sortTx);
+    const inc = U.sum(txs.filter((t) => t.type === 'income'), (t) => t.amount);
+    const exp = U.sum(txs.filter((t) => t.type === 'expense'), (t) => t.amount);
+    const cats = data.categories;
+    root.innerHTML = `
+      <section class="card no-print">
+        <form class="filters" id="flt">
+          <label class="field"><span>期間</span><span class="range"><input type="date" name="from" value="${f.from}"> 〜 <input type="date" name="to" value="${f.to}"></span></label>
+          <label class="field"><span>口座</span><select name="acc">${UI.accountOptions(data.accounts, f.acc, { empty: 'すべて' })}</select></label>
+          <label class="field"><span>カテゴリ</span><select name="cat"><option value="">すべて</option>
+            <optgroup label="支出">${UI.categoryOptions(cats.filter((c) => c.kind === 'expense'), f.cat)}</optgroup>
+            <optgroup label="収入">${UI.categoryOptions(cats.filter((c) => c.kind === 'income'), f.cat)}</optgroup></select></label>
+          <label class="field"><span>種類</span><select name="type">${[['', 'すべて'], ['expense', '支出'], ['income', '収入'], ['transfer', '振替'], ['adjust', '調整']]
+            .map(([v, l]) => `<option value="${v}" ${f.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="field grow"><span>キーワード</span><input type="search" name="q" value="${U.esc(f.q)}" placeholder="メモ・カテゴリ・金額"></label>
+          <div class="field"><span>&nbsp;</span><button type="button" class="btn small" id="flt-reset">条件をリセット</button></div>
+        </form>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>取引一覧</h2><span class="muted">${txs.length}件　収入 <b class="inc">${U.yen(inc)}</b>　支出 <b class="exp">${U.yen(exp)}</b></span></div>
+        ${txRows(model, txs)}
+      </section>`;
+    const form = root.querySelector('#flt');
+    form.addEventListener('change', () => {
+      ['from', 'to', 'acc', 'cat', 'type'].forEach((k) => (listFilter[k] = form.elements[k].value));
+      V.list(root);
+    });
+    let timer;
+    form.elements.q.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        listFilter.q = form.elements.q.value;
+        V.list(root);
+        const qi = root.querySelector('input[name=q]');
+        qi.focus();
+        qi.setSelectionRange(qi.value.length, qi.value.length);
+      }, 300);
+    });
+    root.querySelector('#flt-reset').onclick = () => {
+      Object.keys(listFilter).forEach((k) => delete listFilter[k]);
+      V.list(root);
+    };
+    bindTxRows(root, data);
+  };
+
+  /* ================= 残高 ================= */
+  const balQuery = {};
+  V.balance = function (root) {
+    const { data, model } = KB.live();
+    const qd = balQuery.date || U.todayStr();
+    const qt = balQuery.timing || 'end';
+    const accs = data.accounts.filter((a) => !a.archived || (model.perAcc.get(a.id) || {}).snaps.length);
+    const total = B.totalAt(model, qd, qt, accs.map((a) => a.id));
+    root.innerHTML = `
+      <section class="card">
+        <div class="card-head"><h2>指定した日の残高</h2><button class="btn primary" id="bal-new">残高を登録</button></div>
+        <div class="filters">
+          <label class="field"><span>日付</span><input type="date" id="bq-date" value="${qd}"></label>
+          <label class="field"><span>時点</span><select id="bq-timing"><option value="start" ${qt === 'start' ? 'selected' : ''}>朝（その日の取引前）</option><option value="end" ${qt === 'end' ? 'selected' : ''}>夜（その日の取引後）</option></select></label>
+        </div>
+        <table class="kv">${accs.map((a) => `<tr><th>${U.esc(a.name)}</th><td class="r">${UI.balanceHTML(B.balanceAt(model, a.id, qd, qt))}</td></tr>`).join('')}
+          <tr class="total"><th>合計</th><td class="r"><span class="amt">${U.yen(total.value)}</span>${total.estimated ? ' <span class="tag est">推定を含む</span>' : ''}</td></tr></table>
+        ${total.unknown ? `<p class="hint">残高未登録の口座が ${total.unknown} 件あり、合計に含めていません。</p>` : ''}
+      </section>
+      ${accs.map((a) => {
+        const ds = B.snapshotDiffs(model, a.id).slice().reverse();
+        return `<section class="card">
+          <div class="card-head"><h2>${U.esc(a.name)} <span class="tag kind">${UI.KIND[a.kind]}</span></h2>
+            <button class="btn small" data-snap-new="${a.id}">この口座の残高を登録</button></div>
+          ${ds.length === 0 ? '<p class="empty">まだ残高が登録されていません。登録すると、その日からの残高が計算されます。</p>' :
+          `<table class="list"><thead><tr><th>いつ時点</th><th class="r">登録した残高</th><th class="r hide-sm">帳簿の計算</th><th class="r">差額</th><th></th></tr></thead><tbody>
+          ${ds.map((d) => {
+            const s = d.snap;
+            let diffCell, act = '';
+            if (d.first) diffCell = '<span class="muted">起点</span>';
+            else if (d.diff === 0 && d.adjSum === 0) diffCell = '<span class="ok-text">一致</span>';
+            else if (d.diff === 0) diffCell = `<span class="ok-text">調整済</span><div class="sub">${U.yen(d.adjSum)}</div>`;
+            else diffCell = `<span class="tag bad">差額あり</span><div class="neg">${d.diff > 0 ? '+' : ''}${U.yen(d.diff)}</div>`;
+            if (!d.first && d.diff !== 0) act += `<button class="btn small" data-adj="${s.id}">${d.adjSum ? '調整をやり直す' : '調整として記録'}</button>`;
+            if (d.adjSum && d.diff === 0) act += `<button class="btn small ghost" data-unadj="${s.id}">調整を取り消す</button>`;
+            return `<tr><td class="nowrap">${U.ymd(s.date)}（${U.weekday(s.date)}）<span class="tag">${s.timing === 'start' ? '朝' : '夜'}</span>${s.memo ? `<div class="sub">${U.esc(s.memo)}</div>` : ''}</td>
+              <td class="r nowrap">${U.yen(s.amount)}</td>
+              <td class="r nowrap hide-sm">${d.first ? '—' : U.yen(d.expected - d.adjSum)}</td>
+              <td class="r nowrap">${diffCell}</td>
+              <td class="r actions-cell">${act}<button class="btn small ghost" data-snap-edit="${s.id}">編集</button></td></tr>`;
+          }).join('')}</tbody></table>`}
+        </section>`;
+      }).join('')}`;
+    root.querySelector('#bal-new').onclick = () => A.openSnapshot();
+    const qdi = root.querySelector('#bq-date'), qti = root.querySelector('#bq-timing');
+    const upd = () => { if (U.isValidDate(qdi.value)) { balQuery.date = qdi.value; balQuery.timing = qti.value; V.balance(root); } };
+    qdi.onchange = upd; qti.onchange = upd;
+    root.querySelectorAll('[data-snap-new]').forEach((b) => (b.onclick = () => A.openSnapshot(null, { accountId: b.dataset.snapNew })));
+    root.querySelectorAll('[data-snap-edit]').forEach((b) => (b.onclick = () => A.openSnapshot(data.snapshots.find((s) => s.id === b.dataset.snapEdit))));
+    root.querySelectorAll('[data-adj]').forEach((b) => (b.onclick = async () => {
+      const d = model.diffs.get(b.dataset.adj);
+      const yes = await UI.confirm(`差額 ${d.rawDiff > 0 ? '+' : ''}${U.yen(d.rawDiff)} を「調整（使途不明）」として記録しますか？\n記入漏れが見つかった場合は、先に取引を追加してください。`, { okLabel: '記録する' });
+      if (yes && (await UI.guard(() => A.setAdjust(b.dataset.adj, true)))) { UI.render(); UI.toast('調整を記録しました'); }
+    }));
+    root.querySelectorAll('[data-unadj]').forEach((b) => (b.onclick = async () => {
+      if (await UI.confirm('この残高登録の調整を取り消しますか？', { okLabel: '取り消す' }))
+        if (await UI.guard(() => A.setAdjust(b.dataset.unadj, false))) UI.render();
+    }));
+  };
+
+  /* ================= 引き落とし ================= */
+  V.withdraw = function (root) {
+    const { data, model } = KB.live();
+    const today = U.todayStr();
+    const cards = data.accounts.filter((a) => a.kind === 'credit');
+    const groupHTML = (g, open) => `<details class="wd" ${open ? 'open' : ''}>
+      <summary><span class="wd-date">${U.ymd(g.date)}（${U.weekday(g.date)}）</span>
+        <span class="wd-total">${U.yen(g.total)}</span><span class="muted">${g.count}件</span>
+        ${g.insufficient ? `<span class="tag bad" title="引き落とし日の夜の残高 ${U.yen(g.bankBalance.value)}">残高不足</span>` : ''}</summary>
+      <table class="list"><thead><tr><th>利用日</th><th>内容</th><th class="r">金額</th></tr></thead><tbody>
+      ${g.items.map((t) => `<tr class="clickable" data-tx="${t.id}"><td class="nowrap">${U.mdw(t.date)}</td><td>${txLabel(model, t)}${t.memo ? `<div class="sub">${U.esc(t.memo)}</div>` : ''}</td>
+        <td class="r nowrap">${t.type === 'income' ? '−' : ''}${U.num(t.amount)}</td></tr>`).join('')}</tbody></table></details>`;
+    root.innerHTML = cards.length === 0
+      ? `<section class="card"><h2>引き落とし</h2><p class="empty">クレジットカードの口座がありません。<a href="#config">設定</a>で種類「クレジットカード」の口座を追加してください。</p></section>`
+      : cards.map((c) => {
+        if (!B.isAutoCard(c, model.accById))
+          return `<section class="card"><h2>${U.esc(c.name)}</h2><p class="empty">引き落とし口座が未設定のため、自動計算していません。<a href="#config">設定</a>で引き落とし口座を選ぶと、ここに引き落とし日ごとの合計が出ます。</p></section>`;
+        const gs = C.groups(model, c.id);
+        const up = gs.filter((g) => g.date >= today);
+        const past = gs.filter((g) => g.date < today).reverse();
+        const bank = model.accById.get(c.settlementAccountId);
+        return `<section class="card">
+          <div class="card-head"><h2>${U.esc(c.name)}</h2><span class="muted">引き落とし口座：${U.esc(bank.name)}</span></div>
+          <h3>これからの引き落とし</h3>
+          ${up.length ? up.map((g, i) => groupHTML(g, i === 0)).join('') : '<p class="empty">予定はありません</p>'}
+          ${past.length ? `<details class="past"><summary>済んだ引き落とし（${past.length}回）</summary>${past.map((g) => groupHTML(g, false)).join('')}</details>` : ''}
+        </section>`;
+      }).join('');
+    bindTxRows(root, data);
+  };
+
+  /* 復元（設定画面・初回起動から使う） */
+  V.restoreFromFile = function (input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = async () => {
+      const res = KB.io.parseBackup(r.result);
+      if (res.error) return UI.toast(res.error, 'error');
+      const s = res.summary;
+      const yes = await UI.confirm(
+        `バックアップ（${s.exportedAt ? U.ymd(s.exportedAt.slice(0, 10)) : '日付不明'}保存）を復元します。\n口座 ${s.accounts}件・取引 ${s.transactions}件・残高登録 ${s.snapshots}件\n\n現在のデータはすべて置き換わります。よろしいですか？`,
+        { okLabel: '置き換えて復元', danger: true }
+      );
+      if (!yes) return;
+      if (await UI.guard(() => D.replaceAll(res.data))) {
+        UI.go('');
+        UI.toast('復元しました');
+      }
+    };
+    r.onerror = () => UI.toast('ファイルを読めませんでした', 'error');
+    r.readAsText(file);
+  };
+})(window.KB = window.KB || {});
+
+</script>
+<script>
+/* 画面：月次レポート・年次レポート・出納帳・設定 */
+(function (KB) {
+  'use strict';
+  const U = KB.util, UI = KB.ui, B = KB.balance, R = KB.report, L = KB.ledger, D = KB.db, A = KB.actions, IO = KB.io;
+  const V = UI.views;
+
+  const balText = (b) => (b.status === 'unknown' ? '不明' : U.num(b.value) + (b.status === 'estimated' ? '（推定）' : ''));
+  const totText = (t) => U.num(t.value) + (t.estimated ? '（推定を含む）' : '');
+  const yenCell = (v, cls) => `<td class="r nowrap ${v ? cls || '' : 'muted'} ${v < 0 ? 'neg' : ''}">${U.num(v)}</td>`;
+
+  function summaryRows(p) {
+    return [
+      ['期首の残高', p.open.value, p.open.estimated ? '推定を含む' : ''],
+      ['収入', p.income, ''], ['支出', p.expense, ''], ['調整（使途不明）', p.adjust, ''],
+      ['未調整の差額', p.unadjusted, p.unadjusted ? '残高画面で確認' : ''],
+      ['期末の残高', p.close.value, p.close.estimated ? '推定を含む' : ''],
+    ];
+  }
+
+  /* ================= 月次レポート ================= */
+  V.report = function (root, params) {
+    const { data, model } = KB.live();
+    const [ty, tm] = UI.thisYM();
+    const y = +params.y || ty, m = +params.m || tm;
+    const p = R.month(model, y, m);
+    const nav = UI.monthNav(y, m);
+    const exp = data.categories.filter((c) => c.kind === 'expense');
+    const catRows = (map, cats) => {
+      const ids = new Set(cats.map((c) => c.id));
+      map.forEach((_, id) => ids.add(id));
+      const total = U.sum([...map.values()]);
+      return [...ids].map((id) => ({ id, cat: model.catById.get(id), v: map.get(id) || 0 }))
+        .filter((r) => r.v || (r.cat && !r.cat.archived))
+        .sort((a, b) => b.v - a.v)
+        .map((r) => ({ name: r.cat ? r.cat.name : '（未分類）', color: r.cat && r.cat.color, v: r.v, share: total ? r.v / total : 0 }));
+    };
+    const er = catRows(p.expByCat, exp);
+    const ir = catRows(p.incByCat, data.categories.filter((c) => c.kind === 'income'));
+    const labels = ['月初の残高', '収入', '支出', '調整（使途不明）', '未調整の差額', '月末の残高'];
+    const sr = summaryRows(p).map((r, i) => [labels[i]].concat(r.slice(1)));
+    root.innerHTML = `
+      <div class="pager no-print"><a class="btn small" href="#report-${nav.prev[0]}-${nav.prev[1]}">‹ 前月</a>
+        <h1>${y}年${m}月</h1><a class="btn small" href="#report-${nav.next[0]}-${nav.next[1]}">翌月 ›</a></div>
+      <section class="card" id="rp-sum">
+        <div class="card-head"><h2>${y}年${m}月の収支</h2>${UI.toolButtons('rp-sum')}</div>
+        <h1 class="print-only">${y}年${m}月 月次レポート</h1>
+        <table class="kv">${sr.map(([l, v, note], i) => `<tr class="${i === 0 || i === 5 ? 'total' : ''}"><th>${l}</th><td class="r"><span class="amt ${v < 0 ? 'neg' : ''}">${U.yen(v)}</span>${note ? ` <span class="tag ${i === 4 ? 'bad' : 'est'}">${note}</span>` : ''}</td></tr>`).join('')}</table>
+        ${p.open.unknown ? `<p class="hint">残高未登録の口座が ${p.open.unknown} 件あり、残高の合計に含めていません。</p>` : ''}
+        <h3>口座別</h3>
+        <table class="list"><thead><tr><th>口座</th><th class="r">月初</th><th class="r">月末</th><th class="r">増減</th></tr></thead><tbody>
+        ${p.byAccount.filter((r) => !r.account.archived || r.open.status !== 'unknown').map((r) => `<tr><td>${U.esc(r.account.name)}</td><td class="r">${UI.balanceHTML(r.open)}</td><td class="r">${UI.balanceHTML(r.close)}</td>
+          <td class="r nowrap">${r.open.status !== 'unknown' && r.close.status !== 'unknown' ? U.num(r.close.value - r.open.value) : '—'}</td></tr>`).join('')}</tbody></table>
+      </section>
+      <div class="cols">
+        <section class="card" id="rp-exp"><div class="card-head"><h2>カテゴリ別の支出</h2>${UI.toolButtons('rp-exp')}</div>
+          <h1 class="print-only">${y}年${m}月 カテゴリ別の支出</h1>${barTable(er, p.expense)}</section>
+        <section class="card" id="rp-inc"><div class="card-head"><h2>カテゴリ別の収入</h2>${UI.toolButtons('rp-inc')}</div>
+          <h1 class="print-only">${y}年${m}月 カテゴリ別の収入</h1>${barTable(ir, p.income)}</section>
+      </div>`;
+    const ym = `${y}-${U.pad(m)}`;
+    UI.bindTools(root, {
+      'rp-sum': () => U.download(`月次レポート_${ym}.csv`, U.csv([['項目', '金額（円）']].concat(sr.map(([l, v]) => [l, v]))
+        .concat([[], ['口座', '月初', '月末']]).concat(p.byAccount.map((r) => [r.account.name, balText(r.open), balText(r.close)])))),
+      'rp-exp': () => U.download(`カテゴリ別支出_${ym}.csv`, U.csv([['カテゴリ', '金額（円）', '割合']].concat(er.map((r) => [r.name, r.v, (r.share * 100).toFixed(1) + '%'])))),
+      'rp-inc': () => U.download(`カテゴリ別収入_${ym}.csv`, U.csv([['カテゴリ', '金額（円）', '割合']].concat(ir.map((r) => [r.name, r.v, (r.share * 100).toFixed(1) + '%'])))),
+    });
+  };
+
+  function barTable(rows, total) {
+    if (!total) return '<p class="empty">この月はまだありません</p>';
+    return `<table class="list bars"><tbody>${rows.filter((r) => r.v).map((r) => `<tr><td class="nowrap"><span class="dot" style="background:${U.esc(r.color || '#8c959f')}"></span>${U.esc(r.name)}</td>
+      <td class="bar-cell"><span class="bar" style="width:${(r.share * 100).toFixed(1)}%;background:${U.esc(r.color || '#8c959f')}"></span></td>
+      <td class="r nowrap">${U.yen(r.v)}</td><td class="r muted nowrap">${(r.share * 100).toFixed(1)}%</td></tr>`).join('')}
+      <tr class="total"><td>合計</td><td></td><td class="r nowrap">${U.yen(total)}</td><td></td></tr></tbody></table>`;
+  }
+
+  /* ================= 年次レポート ================= */
+  V.annual = function (root, params) {
+    const { model } = KB.live();
+    const y = +params.y || UI.thisYM()[0];
+    const r = R.year(model, y);
+    const t = r.total;
+    const labels = ['年初の残高（1/1 朝）', '年間の収入', '年間の支出', '調整（使途不明）', '未調整の差額', '年末の残高（12/31 夜）'];
+    const sr = summaryRows(t).map((x, i) => [labels[i]].concat(x.slice(1)));
+    const catTable = (rows, title) => `<div class="scroll"><table class="list wide-num"><thead><tr><th>${title}</th>${r.months.map((_, i) => `<th class="r">${i + 1}月</th>`).join('')}<th class="r">年計</th></tr></thead><tbody>
+      ${rows.map((x) => `<tr><td class="nowrap">${U.esc(x.name)}</td>${x.vals.map((v) => `<td class="r">${v ? U.num(v) : ''}</td>`).join('')}<td class="r"><b>${U.num(x.total)}</b></td></tr>`).join('')}
+      <tr class="total"><td>合計</td>${r.months.map((_, i) => `<td class="r">${U.num(U.sum(rows, (x) => x.vals[i]))}</td>`).join('')}<td class="r">${U.num(U.sum(rows, (x) => x.total))}</td></tr></tbody></table></div>`;
+    root.innerHTML = `
+      <div class="pager no-print"><a class="btn small" href="#annual-${y - 1}">‹ 前年</a><h1>${y}年</h1><a class="btn small" href="#annual-${y + 1}">翌年 ›</a></div>
+      <div class="cols">
+        <section class="card" id="an-sum"><div class="card-head"><h2>年間サマリー</h2>${UI.toolButtons('an-sum')}</div>
+          <h1 class="print-only">${y}年 年間サマリー</h1>
+          <table class="kv">${sr.map(([l, v, note], i) => `<tr class="${i === 0 || i === 5 ? 'total' : ''}"><th>${l}</th><td class="r"><span class="amt ${v < 0 ? 'neg' : ''}">${U.yen(v)}</span>${note ? ` <span class="tag ${i === 4 ? 'bad' : 'est'}">${note}</span>` : ''}</td></tr>`).join('')}</table>
+          ${t.open.unknown ? `<p class="hint">残高未登録の口座が ${t.open.unknown} 件あり、残高の合計に含めていません。</p>` : ''}
+          <h3>口座別</h3>
+          <table class="list"><thead><tr><th>口座</th><th class="r">年初</th><th class="r">年末</th></tr></thead><tbody>
+          ${t.byAccount.filter((x) => !x.account.archived || x.open.status !== 'unknown').map((x) => `<tr><td>${U.esc(x.account.name)}</td><td class="r">${UI.balanceHTML(x.open)}</td><td class="r">${UI.balanceHTML(x.close)}</td></tr>`).join('')}</tbody></table>
+        </section>
+        <section class="card" id="an-mon"><div class="card-head"><h2>月別の推移</h2>${UI.toolButtons('an-mon')}</div>
+          <h1 class="print-only">${y}年 月別の推移</h1>
+          <table class="list"><thead><tr><th>月</th><th class="r">収入</th><th class="r">支出</th><th class="r">収支</th><th class="r">月末の残高</th></tr></thead><tbody>
+          ${r.months.map((p, i) => `<tr><td><a href="#report-${y}-${i + 1}">${i + 1}月</a></td>${yenCell(p.income, 'inc')}${yenCell(p.expense, 'exp')}${yenCell(p.net)}
+            <td class="r nowrap">${U.num(p.close.value)}${p.close.estimated ? ' <span class="tag est">推定</span>' : ''}</td></tr>`).join('')}
+          <tr class="total"><td>年計</td>${yenCell(t.income)}${yenCell(t.expense)}${yenCell(t.net)}<td class="r">${U.num(t.close.value)}</td></tr></tbody></table>
+        </section>
+      </div>
+      <section class="card print-wide" id="an-exp"><div class="card-head"><h2>カテゴリ別の年間支出</h2>${UI.toolButtons('an-exp')}</div>
+        <h1 class="print-only">${y}年 カテゴリ別の年間支出（円）</h1>${catTable(r.expenseRows, '支出')}</section>
+      <section class="card print-wide" id="an-inc"><div class="card-head"><h2>カテゴリ別の年間収入</h2>${UI.toolButtons('an-inc')}</div>
+        <h1 class="print-only">${y}年 カテゴリ別の年間収入（円）</h1>${catTable(r.incomeRows, '収入')}</section>`;
+    const head = ['カテゴリ'].concat(r.months.map((_, i) => `${i + 1}月`), ['年計']);
+    const catCsv = (rows) => U.csv([head].concat(rows.map((x) => [x.name].concat(x.vals, [x.total])),
+      [['合計'].concat(r.months.map((_, i) => U.sum(rows, (x) => x.vals[i])), [U.sum(rows, (x) => x.total)])]));
+    UI.bindTools(root, {
+      'an-sum': () => U.download(`年間サマリー_${y}.csv`, U.csv([['項目', '金額（円）']].concat(sr.map(([l, v]) => [l, v]))
+        .concat([[], ['口座', '年初', '年末']]).concat(t.byAccount.map((x) => [x.account.name, balText(x.open), balText(x.close)])))),
+      'an-mon': () => U.download(`月別推移_${y}.csv`, U.csv([['月', '収入', '支出', '収支', '月末の残高']]
+        .concat(r.months.map((p, i) => [`${i + 1}月`, p.income, p.expense, p.net, totText(p.close)]))
+        .concat([['年計', t.income, t.expense, t.net, totText(t.close)]]))),
+      'an-exp': () => U.download(`カテゴリ別年間支出_${y}.csv`, catCsv(r.expenseRows)),
+      'an-inc': () => U.download(`カテゴリ別年間収入_${y}.csv`, catCsv(r.incomeRows)),
+    });
+  };
+
+  /* ================= 出納帳 ================= */
+  const ledgerState = {};
+  V.ledger = function (root) {
+    const { data, model } = KB.live();
+    const [ty, tm] = UI.thisYM();
+    const st = Object.assign({ acc: (data.accounts.find((a) => !a.archived) || data.accounts[0]).id, mode: 'year', y: ty, m: tm,
+      from: U.monthStart(ty, tm), to: U.monthEnd(ty, tm) }, ledgerState);
+    if (!model.accById.has(st.acc)) st.acc = data.accounts[0].id;
+    let from, to, label;
+    if (st.mode === 'year') { from = `${st.y}-01-01`; to = `${st.y}-12-31`; label = `${st.y}年`; }
+    else if (st.mode === 'month') { from = U.monthStart(st.y, st.m); to = U.monthEnd(st.y, st.m); label = `${st.y}年${st.m}月`; }
+    else { from = st.from; to = st.to < st.from ? st.from : st.to; label = `${U.ymd(from)}〜${U.ymd(to)}`; }
+    const led = L.build(model, st.acc, from, to);
+    const acc = led.account;
+    const years = [];
+    for (let yy = ty + 1; yy >= ty - 10; yy--) years.push(yy);
+    const markHTML = (r) => r.mark === 'ok' ? '<span class="mark ok">照合済</span>' : r.mark === 'diff' ? `<span class="mark bad">差額あり</span>` : '';
+    const rowHTML = (r) => {
+      if (r.type === 'carry')
+        return `<tr class="carry"><td class="nowrap">${U.md(r.date)}</td><td>${r.desc}</td><td></td><td></td>
+          <td class="r nowrap">${r.balance == null ? '不明' : U.num(r.balance)}${r.status === 'estimated' ? '<span class="tag est">推定</span>' : ''}</td><td>${markHTML(r)}</td></tr>`;
+      if (r.type === 'monthTotal' || r.type === 'cumTotal')
+        return `<tr class="${r.type === 'monthTotal' ? 'subtotal' : 'cumtotal'}"><td></td><td>${+r.ym.slice(5)}月 ${r.type === 'monthTotal' ? '月計' : '累計'}</td>
+          <td class="r">${U.num(r.in)}</td><td class="r">${U.num(r.out)}</td><td></td><td></td></tr>`;
+      return `<tr class="${r.txId ? 'clickable' : ''} ${r.type === 'gap' ? 'gap' : ''}" ${r.txId ? `data-tx="${r.txId}"` : ''}>
+        <td class="nowrap">${U.md(r.date)}</td><td>${U.esc(r.desc)}</td>
+        <td class="r">${r.in ? U.num(r.in) : ''}</td><td class="r">${r.out ? U.num(r.out) : ''}</td>
+        <td class="r nowrap ${r.balance < 0 ? 'neg' : ''}">${r.balance == null ? '—' : U.num(r.balance)}</td><td>${markHTML(r)}</td></tr>`;
+    };
+    root.innerHTML = `
+      <section class="card no-print">
+        <form class="filters" id="lg">
+          <label class="field"><span>口座</span><select name="acc">${UI.accountOptions(data.accounts, st.acc)}</select></label>
+          <label class="field"><span>期間</span><select name="mode"><option value="year" ${st.mode === 'year' ? 'selected' : ''}>年</option><option value="month" ${st.mode === 'month' ? 'selected' : ''}>月</option><option value="range" ${st.mode === 'range' ? 'selected' : ''}>期間を指定</option></select></label>
+          ${st.mode !== 'range' ? `<label class="field"><span>年</span><select name="y">${years.map((yy) => `<option ${yy === +st.y ? 'selected' : ''}>${yy}</option>`).join('')}</select></label>` : ''}
+          ${st.mode === 'month' ? `<label class="field"><span>月</span><select name="m">${[...Array(12)].map((_, i) => `<option value="${i + 1}" ${i + 1 === +st.m ? 'selected' : ''}>${i + 1}月</option>`).join('')}</select></label>` : ''}
+          ${st.mode === 'range' ? `<label class="field"><span>期間</span><span class="range"><input type="date" name="from" value="${st.from}"> 〜 <input type="date" name="to" value="${st.to}"></span></label>` : ''}
+        </form>
+      </section>
+      <section class="card" id="ledger">
+        <div class="card-head"><h2>${led.name}：${U.esc(acc.name)}<span class="muted">　${label}</span></h2>${UI.toolButtons('ledger')}</div>
+        <div class="print-only print-head"><h1>${led.name}</h1><p>口座：${U.esc(acc.name)}　期間：${U.ymd(from)} 〜 ${U.ymd(to)}</p></div>
+        <div class="scroll"><table class="list ledger"><thead><tr><th>月日</th><th>摘要</th><th class="r">入金</th><th class="r">出金</th><th class="r">差引残高</th><th class="mark-col"></th></tr></thead>
+          <tbody>${led.rows.map(rowHTML).join('')}</tbody></table></div>
+        <p class="hint">「照合済」は登録した残高と帳簿が一致した時点、「推定」は後の残高登録から逆算した値です。</p>
+      </section>`;
+    const f = root.querySelector('#lg');
+    f.addEventListener('change', () => {
+      ['acc', 'mode', 'y', 'm', 'from', 'to'].forEach((k) => { if (f.elements[k]) ledgerState[k] = f.elements[k].value; });
+      V.ledger(root);
+    });
+    root.querySelectorAll('tr[data-tx]').forEach((tr) => tr.addEventListener('click', () => A.openTx(data.transactions.find((t) => t.id === tr.dataset.tx))));
+    UI.bindTools(root, {
+      ledger: () => {
+        const rows = [[led.name, acc.name, `${from}〜${to}`], ['月日', '摘要', '入金', '出金', '差引残高', '照合']];
+        led.rows.forEach((r) => {
+          if (r.type === 'monthTotal' || r.type === 'cumTotal') rows.push(['', `${+r.ym.slice(5)}月 ${r.type === 'monthTotal' ? '月計' : '累計'}`, r.in, r.out, '', '']);
+          else rows.push([r.date, r.desc, r.in || '', r.out || '', r.balance == null ? '' : r.balance,
+            (r.status === 'estimated' ? '推定' : '') + (r.mark === 'ok' ? '照合済' : r.mark === 'diff' ? '差額あり' : '')]);
+        });
+        U.download(`${led.name}_${acc.name}_${from}_${to}.csv`, U.csv(rows));
+      },
+    });
+  };
+
+  /* ================= 設定 ================= */
+  V.config = function (root) {
+    const { data } = KB.live();
+    const lb = KB.state.settings.lastBackupAt;
+    const accRows = data.accounts.map((a, i) => {
+      const bank = a.settlementAccountId && data.accounts.find((x) => x.id === a.settlementAccountId);
+      return `<tr class="${a.archived ? 'archived' : ''}"><td>${U.esc(a.name)}${a.archived ? ' <span class="tag">非表示</span>' : ''}
+        <div class="sub">${UI.KIND[a.kind]}${a.kind === 'credit' ? '　引き落とし：' + (bank ? U.esc(bank.name) : '未設定') : ''}</div></td>
+        <td class="r actions-cell"><button class="btn small ghost" data-mv="accounts:${a.id}:-1" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+        <button class="btn small ghost" data-mv="accounts:${a.id}:1" ${i === data.accounts.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+        <button class="btn small" data-acc="${a.id}">編集</button></td></tr>`;
+    }).join('');
+    const catBlock = (kind, title) => {
+      const list = data.categories.filter((c) => c.kind === kind);
+      return `<h3>${title}</h3><table class="list"><tbody>${list.map((c, i) => `<tr class="${c.archived ? 'archived' : ''}">
+        <td><span class="dot" style="background:${U.esc(c.color || '#8c959f')}"></span>${U.esc(c.name)}${c.archived ? ' <span class="tag">非表示</span>' : ''}</td>
+        <td class="r actions-cell"><button class="btn small ghost" data-mv="categories:${c.id}:-1:${kind}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+        <button class="btn small ghost" data-mv="categories:${c.id}:1:${kind}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+        <button class="btn small" data-cat="${c.id}">編集</button></td></tr>`).join('')}</tbody></table>
+        <div class="actions left"><button class="btn small" data-cat-new="${kind}">＋ ${title}カテゴリを追加</button></div>`;
+    };
+    root.innerHTML = `
+      <div class="cols">
+        <section class="card"><div class="card-head"><h2>口座</h2><button class="btn small primary" id="acc-new">＋ 口座を追加</button></div>
+          <table class="list"><tbody>${accRows}</tbody></table></section>
+        <section class="card"><h2>カテゴリ</h2>${catBlock('expense', '支出')}${catBlock('income', '収入')}</section>
+      </div>
+      <section class="card"><h2>データ</h2>
+        <p>データはこのブラウザの中にだけ保存されています。ブラウザのデータ削除や機種変更に備えて、定期的にバックアップを保存してください。</p>
+        <p class="muted">最後のバックアップ：${lb ? U.ymd(lb.slice(0, 10)) : 'まだありません'}</p>
+        <div class="actions left wrap">
+          <button class="btn primary" id="bk-save">バックアップを保存（JSON）</button>
+          <button class="btn" id="bk-load">バックアップから復元</button>
+          <button class="btn" id="csv-all">全取引をCSVで書き出す</button>
+          <input type="file" id="bk-file" accept=".json,application/json" hidden>
+        </div>
+        <h3>全データの削除</h3>
+        <p class="muted">口座・取引・残高・カテゴリをすべて削除し、最初の状態に戻します。</p>
+        <button class="btn danger-ghost" id="wipe">全データを削除</button>
+      </section>
+      <section class="card"><h2>このアプリについて</h2>
+        <p>家計簿 試用版 v1（同期なし）。${D.persistent ? '' : '<b class="neg">このブラウザではデータを保存できないため、閉じると消えます。</b>'}</p>
+        <p><a href="test.html" target="_blank" rel="noopener">残高計算の自動テストを開く</a></p>
+      </section>`;
+    root.querySelector('#acc-new').onclick = () => A.openAccount();
+    root.querySelectorAll('[data-acc]').forEach((b) => (b.onclick = () => A.openAccount(data.accounts.find((a) => a.id === b.dataset.acc))));
+    root.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => A.openCategory(data.categories.find((c) => c.id === b.dataset.cat))));
+    root.querySelectorAll('[data-cat-new]').forEach((b) => (b.onclick = () => A.openCategory(null, b.dataset.catNew)));
+    root.querySelectorAll('[data-mv]').forEach((b) => (b.onclick = () => {
+      const [store, id, dir, kind] = b.dataset.mv.split(':');
+      const list = store === 'accounts' ? data.accounts : data.categories.filter((c) => c.kind === kind);
+      A.move(store, list, id, +dir);
+    }));
+    root.querySelector('#bk-save').onclick = async () => {
+      const r = await U.download(`家計簿バックアップ_${U.todayStr()}.json`, IO.exportJSON(), 'application/json');
+      if (r !== 'saved') return;
+      await UI.guard(() => D.setSetting('lastBackupAt', U.now()));
+      UI.render();
+      UI.toast('バックアップを保存しました');
+    };
+    const file = root.querySelector('#bk-file');
+    root.querySelector('#bk-load').onclick = () => file.click();
+    file.onchange = () => V.restoreFromFile(file);
+    root.querySelector('#csv-all').onclick = () => U.download(`全取引_${U.todayStr()}.csv`, IO.transactionsCSV());
+    root.querySelector('#wipe').onclick = async () => {
+      if (!(await UI.confirm('全データを削除します。元に戻せません。\n先にバックアップを保存しましたか？', { okLabel: '削除する', danger: true }))) return;
+      if (!(await UI.confirm('本当に削除しますか？', { okLabel: '全データを削除', danger: true }))) return;
+      if (await UI.guard(() => D.replaceAll({}))) { UI.go(''); UI.toast('全データを削除しました'); }
+    };
+  };
+})(window.KB = window.KB || {});
+
+</script>
+<script>
+/* 起動 */
+(function (KB) {
+  'use strict';
+  const UI = KB.ui;
+
+  async function start() {
+    const ok = await KB.db.open();
+    if (ok) {
+      try {
+        await KB.db.loadAll();
+      } catch (e) {
+        console.error(e);
+        KB.db.persistent = false;
+        KB.db.error = e;
+      }
+    }
+    if (!KB.db.persistent) {
+      const b = document.getElementById('banner');
+      b.hidden = false;
+      b.textContent = 'このブラウザではデータを保存できません（プライベートブラウズ等）。閉じると入力内容は消えます。';
+    }
+    KB.invalidate();
+    document.getElementById('fab').addEventListener('click', () => KB.actions.openTx());
+    window.addEventListener('hashchange', UI.render);
+    // 日付が変わったら「今日」を更新
+    let day = KB.util.todayStr();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && KB.util.todayStr() !== day) {
+        day = KB.util.todayStr();
+        UI.render();
+      }
+    });
+    UI.render();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})(window.KB = window.KB || {});
+
+</script>
 </body>
 </html>
