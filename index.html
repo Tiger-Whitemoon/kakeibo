@@ -137,7 +137,7 @@ details.past > summary { cursor: pointer; color: var(--ink2); margin: 12px 0 6px
 /* ---------- フォーム ---------- */
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
 .field > span:first-child { font-size: .8rem; font-weight: 600; color: var(--ink2); }
-input:not([type]), input[type=text], input[type=search], input[type=date], select {
+input:not([type]), input[type=text], input[type=tel], input[type=search], input[type=date], select {
   font: inherit; color: var(--ink); background: #fff; border: 1px solid #cfd5cf; border-radius: 8px;
   padding: 8px 10px; min-height: 40px; width: 100%;
 }
@@ -163,6 +163,9 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -3px; }
 .seg.small { margin-bottom: 0; }
 .seg.small span { font-size: .8rem; padding: 9px 4px; }
+.amount-row { display: flex; gap: 6px; }
+.amount-row input { flex: 1; min-width: 0; }
+.sign-btn { flex: none; padding: 6px 10px; font-weight: 700; }
 .preview { background: #f7f9f6; border-radius: 8px; padding: 8px 12px; margin: -4px 0 12px; font-size: .9rem; }
 .preview:empty { display: none; }
 
@@ -321,6 +324,21 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
     String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
     );
+
+  /** 数字欄用：全角数字・全角記号を半角に直す（入力中に使う） */
+  U.toHalfNum = (s) =>
+    String(s)
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[，、]/g, ',')
+      .replace(/[−－ー‐―]/g, '-')
+      .replace(/＋/g, '+')
+      .replace(/[\u3000]/g, ' ');
+
+  /** 名前欄用：半角カナ（ｻｲﾌ）を全角（サイフ）に揃える。他の文字はそのまま */
+  U.toFullKana = (s) => String(s).replace(/[\uff61-\uff9f]+/g, (m) => m.normalize('NFKC'));
+
+  /** 名前・メモの整形：前後の空白を除き、半角カナを全角に */
+  U.cleanText = (s) => U.toFullKana(String(s == null ? '' : s)).trim();
 
   U.MAX_AMOUNT = 999999999; // 9億9,999万9,999円
 
@@ -1137,6 +1155,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
       if (e.target === d) close();
     };
     if (!d.open) d.showModal();
+    UI.bindNumInputs(d);
     if (opts.onMount) opts.onMount(d, close);
     return { el: d, close };
   };
@@ -1162,6 +1181,43 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
       };
       d.showModal();
       d.querySelector('[data-yes]').focus();
+    });
+  };
+
+  /**
+   * 数字欄（data-num）：全角で打たれた数字をその場で半角に直す。
+   * 日本語入力の変換中は触らず、確定した時点で直す。
+   * 「＋/−」ボタン（data-sign）で符号を切り替える（スマホの数字キーボードにマイナスがないため）
+   */
+  UI.bindNumInputs = function (root) {
+    const fix = (el) => {
+      const v = U.toHalfNum(el.value);
+      if (v === el.value) return;
+      const pos = el.selectionStart;
+      const diff = el.value.length - v.length;
+      el.value = v;
+      try {
+        if (pos != null) el.setSelectionRange(pos - diff, pos - diff);
+      } catch (e) { /* 一部の欄では位置を戻せない */ }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    root.querySelectorAll('input[data-num]').forEach((el) => {
+      if (el._numBound) return;
+      el._numBound = true;
+      el.addEventListener('input', (e) => { if (!e.isComposing) fix(el); });
+      el.addEventListener('compositionend', () => setTimeout(() => fix(el), 0));
+      el.addEventListener('blur', () => fix(el));
+    });
+    root.querySelectorAll('[data-sign]').forEach((b) => {
+      if (b._signBound) return;
+      b._signBound = true;
+      b.addEventListener('click', () => {
+        const el = b.closest('.amount-row').querySelector('input');
+        const v = U.toHalfNum(el.value).trim();
+        el.value = v.startsWith('-') ? v.slice(1) : '-' + v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.focus();
+      });
     });
   };
 
@@ -1311,7 +1367,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
       <div class="grid2">
         <label class="field"><span>日付</span><input type="date" name="date" value="${t.date}" required>
           <small class="err" data-err="date" hidden></small><small class="warn" data-warn="date" hidden></small></label>
-        <label class="field"><span>金額（円）</span><input type="text" name="amount" inputmode="numeric" autocomplete="off" value="${t.amount}" placeholder="例 1200">
+        <label class="field"><span>金額（円）</span><input type="tel" name="amount" inputmode="numeric" data-num autocomplete="off" value="${t.amount}" placeholder="例 1200">
           <small class="err" data-err="amount" hidden></small></label>
       </div>
       <label class="field"><span data-label="account">口座</span><select name="accountId">${UI.accountOptions(activeAccs, t.accountId)}</select>
@@ -1398,7 +1454,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
           else rec.amount = a.value;
           rec.accountId = $('accountId').value;
           if (!rec.accountId) err('accountId', '口座を選んでください');
-          rec.memo = $('memo').value.trim();
+          rec.memo = U.cleanText($('memo').value);
           delete rec.toAccountId; delete rec.categoryId; delete rec.withdrawDate;
           if (k === 'transfer') {
             rec.toAccountId = $('toAccountId').value;
@@ -1475,7 +1531,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
             <label><input type="radio" name="timing" value="end" ${s.timing !== 'start' ? 'checked' : ''}><span>夜（その日の取引後）</span></label>
           </div></div>
       </div>
-      <label class="field"><span>残高（円）</span><input type="text" name="amount" inputmode="numeric" autocomplete="off" value="${s.amount}" placeholder="例 30000（マイナスも可）">
+      <label class="field"><span>残高（円）</span><span class="amount-row"><input type="tel" name="amount" inputmode="numeric" data-num autocomplete="off" value="${s.amount}" placeholder="例 30000"><button type="button" class="btn sign-btn" data-sign="amount" title="プラス・マイナスを切り替え">＋/−</button></span>
         <small class="err" data-err="amount" hidden></small></label>
       <div class="preview" data-preview></div>
       <label class="check" data-adjust hidden><input type="checkbox" name="adjust" ${hadAdjust ? 'checked' : ''}> 差額を「調整（使途不明）」として記録する</label>
@@ -1528,7 +1584,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
           if (!U.isValidDate(date)) return UI.fieldError(f, 'date', '日付を入力してください');
           if (a.error) return UI.fieldError(f, 'amount', a.error);
           const rec = isEdit ? Object.assign({}, existing) : {};
-          Object.assign(rec, { accountId: $('accountId').value, date, timing: timing(), amount: a.value, memo: $('memo').value.trim() });
+          Object.assign(rec, { accountId: $('accountId').value, date, timing: timing(), amount: a.value, memo: U.cleanText($('memo').value) });
           const pairs = [];
           // 同じ口座・日付・時点のチェックポイントがあれば上書き確認
           const dup = KB.live().data.snapshots.find((x) => x.accountId === rec.accountId && x.date === rec.date && x.timing === rec.timing && x.id !== rec.id);
@@ -1615,7 +1671,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
         refresh();
         f.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const name = $('name').value.trim();
+          const name = U.cleanText($('name').value);
           if (!name) return UI.fieldError(f, 'name', '口座名を入力してください');
           const rec = Object.assign({}, existing || { order: data.accounts.length + 1 }, { name, kind: $('kind').value });
           rec.settlementAccountId = rec.kind === 'credit' ? $('settlementAccountId').value || '' : '';
@@ -1668,7 +1724,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
         const $ = (n) => f.elements[n];
         f.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const name = $('name').value.trim();
+          const name = U.cleanText($('name').value);
           const k = isEdit ? c.kind : $('kind').value;
           if (!name) return UI.fieldError(f, 'name', 'カテゴリ名を入力してください');
           if (data.categories.some((x) => x.kind === k && x.name === name && x.id !== c.id))
@@ -1758,17 +1814,18 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
             <label><input type="radio" name="timing" value="start"><span>朝（その日の取引前）</span></label>
             <label><input type="radio" name="timing" value="end" checked><span>夜（その日の取引後）</span></label></div></div>
         </div>
-        <label class="field"><span>その時点の残高（円）</span><input name="amount" inputmode="numeric" placeholder="例 30000"><small class="err" data-err="amount" hidden></small></label>
+        <label class="field"><span>その時点の残高（円）</span><span class="amount-row"><input type="tel" name="amount" inputmode="numeric" data-num autocomplete="off" placeholder="例 30000"><button type="button" class="btn sign-btn" data-sign="amount" title="プラス・マイナスを切り替え">＋/−</button></span><small class="err" data-err="amount" hidden></small></label>
         <div class="actions"><button type="submit" class="btn primary">はじめる</button></div>
       </form>
       <p class="hint">以前のバックアップがある場合は <a href="#" id="setup-restore">バックアップから復元</a></p>
       <input type="file" id="setup-file" accept=".json,application/json" hidden>
     </div>`;
     const f = root.querySelector('#setup-form');
+    UI.bindNumInputs(f);
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       ['name', 'date', 'amount'].forEach((n) => UI.fieldError(f, n, ''));
-      const name = f.elements.name.value.trim();
+      const name = U.cleanText(f.elements.name.value);
       const date = f.elements.date.value;
       const a = U.parseAmount(f.elements.amount.value, { allowNegative: true });
       let ok = true;

@@ -62,6 +62,21 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
     );
 
+  /** 数字欄用：全角数字・全角記号を半角に直す（入力中に使う） */
+  U.toHalfNum = (s) =>
+    String(s)
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[，、]/g, ',')
+      .replace(/[−－ー‐―]/g, '-')
+      .replace(/＋/g, '+')
+      .replace(/[\u3000]/g, ' ');
+
+  /** 名前欄用：半角カナ（ｻｲﾌ）を全角（サイフ）に揃える。他の文字はそのまま */
+  U.toFullKana = (s) => String(s).replace(/[\uff61-\uff9f]+/g, (m) => m.normalize('NFKC'));
+
+  /** 名前・メモの整形：前後の空白を除き、半角カナを全角に */
+  U.cleanText = (s) => U.toFullKana(String(s == null ? '' : s)).trim();
+
   U.MAX_AMOUNT = 999999999; // 9億9,999万9,999円
 
   /** 金額入力を整数に直す。全角数字・カンマ・「円」・各種マイナス記号を受け付ける */
@@ -729,6 +744,9 @@
     eq('金額：0円はエラー', !!U.parseAmount('0').error, true);
     eq('金額：文字はエラー', !!U.parseAmount('abc').error, true);
     eq('金額：上限超えはエラー', !!U.parseAmount('1000000000').error, true);
+    eq('入力中の半角化：全角数字・全角マイナス・全角カンマ', U.toHalfNum('－１２，３４５'), '-12,345');
+    eq('名前の整形：半角カナを全角に、他はそのまま', U.cleanText(' ｻｲﾌ（ﾒｲﾝ）PayPay '), 'サイフ（メイン）PayPay');
+    eq('名前の整形：濁点付き半角カナ', U.cleanText('ｶﾞｽﾀﾞｲ'), 'ガスダイ');
     eq('月末日', [U.monthEnd(2026, 2), U.monthEnd(2028, 2), U.monthEnd(2026, 12)], ['2026-02-28', '2028-02-29', '2026-12-31']);
 
     return results;
