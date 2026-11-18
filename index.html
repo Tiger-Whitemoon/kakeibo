@@ -166,6 +166,9 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .amount-row { display: flex; gap: 6px; }
 .amount-row input { flex: 1; min-width: 0; }
 .sign-btn { flex: none; padding: 6px 10px; font-weight: 700; }
+.wd-missing { color: var(--bad); font-size: .82rem; font-weight: 600; margin-top: 2px; }
+.wd-missing-sum { background: var(--bad-soft); border-radius: 8px; padding: 8px 12px; margin: 0 0 8px; font-size: .9rem; }
+.list tr.row-warn td { background: #fff8f7; }
 .preview { background: #f7f9f6; border-radius: 8px; padding: 8px 12px; margin: -4px 0 12px; font-size: .9rem; }
 .preview:empty { display: none; }
 
@@ -611,7 +614,8 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
    */
   C.groups = function (model, cardId) {
     const card = model.accById.get(cardId);
-    if (!B.isAutoCard(card, model.accById)) return [];
+    if (!card || card.kind !== 'credit') return [];
+    const auto = B.isAutoCard(card, model.accById);
     const map = new Map();
     model.data.transactions.forEach((t) => {
       if (t.accountId !== cardId || !t.withdrawDate) return;
@@ -627,12 +631,26 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
     const groups = [...map.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
     groups.forEach((g) => {
       g.items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      g.auto = auto;
+      if (!auto) { g.insufficient = false; return; }
       const bal = B.balanceAt(model, bankId, g.date, 'end');
       g.bankBalance = bal;
       g.insufficient = bal.status !== 'unknown' && bal.value < 0;
     });
     return groups;
   };
+
+  /** 引き落とし日が未設定のカード利用か */
+  C.isUnset = (t, accById) => {
+    const a = accById.get(t.accountId);
+    return !!(a && a.kind === 'credit' && (t.type === 'expense' || t.type === 'income') && !t.withdrawDate);
+  };
+
+  /** 引き落とし日が未設定のカード利用（利用日の古い順） */
+  C.unsetItems = (model, cardId) =>
+    model.data.transactions
+      .filter((t) => (!cardId || t.accountId === cardId) && C.isUnset(t, model.accById))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   /** 今日以降で最も近い引き落とし（ホーム用） */
   C.nextGroup = function (model, cardId, today) {
@@ -1377,7 +1395,8 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
       <label class="field" data-show="cat"><span>カテゴリ</span><select name="categoryId"></select>
         <small class="err" data-err="categoryId" hidden></small></label>
       <label class="field" data-show="wd"><span>引き落とし日</span><input type="date" name="withdrawDate" value="${t.withdrawDate || ''}">
-        <small class="hint">初期値は同じカードの直前の引き落とし日です。変えるときはカレンダーから選んでください。</small>
+        <small class="hint">初期値は同じカードの直前の引き落とし日です。変えるときはカレンダーから選んでください。まだ分からない場合は空欄のまま保存し、後日入力できます。</small>
+        <small class="warn" data-warn="wd-bank" hidden>このカードは引き落とし口座が未設定です。「設定」で引き落とし口座を選ぶと、引き落とし日に銀行の残高から自動で引かれます。</small>
         <small class="err" data-err="withdrawDate" hidden></small></label>
       <label class="field"><span>メモ</span><input type="text" name="memo" value="${U.esc(t.memo || '')}" maxlength="200"></label>
       <div class="actions">
@@ -1396,7 +1415,9 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
         let wdTouched = !!(isEdit && t.withdrawDate);
 
         const type = () => f.querySelector('input[name=type]:checked').value;
-        const isAutoCard = () => B.isAutoCard(model.accById.get($('accountId').value), model.accById);
+        const curAcc = () => model.accById.get($('accountId').value);
+        const isCard = () => !!(curAcc() && curAcc().kind === 'credit');
+        const isAutoCard = () => B.isAutoCard(curAcc(), model.accById);
         const fillCats = () => {
           const k = type();
           if (k === 'transfer') return;
@@ -1413,8 +1434,9 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
           f.querySelector('[data-show=transfer]').hidden = k !== 'transfer';
           f.querySelector('[data-show=cat]').hidden = k === 'transfer';
           f.querySelector('[data-label=account]').textContent = k === 'transfer' ? '出金元' : '口座';
-          const showWd = k !== 'transfer' && isAutoCard();
+          const showWd = k !== 'transfer' && isCard();
           f.querySelector('[data-show=wd]').hidden = !showWd;
+          f.querySelector('[data-warn=wd-bank]').hidden = !(showWd && !isAutoCard());
           if (showWd) setDefaultWd();
           $('withdrawDate').min = $('date').value || '';
           const fut = $('date').value && $('date').value > U.todayStr();
@@ -1463,10 +1485,12 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
           } else {
             rec.categoryId = $('categoryId').value;
             if (!rec.categoryId) err('categoryId', 'カテゴリを選んでください');
-            if (isAutoCard()) {
-              rec.withdrawDate = $('withdrawDate').value;
-              if (!U.isValidDate(rec.withdrawDate || '')) err('withdrawDate', '引き落とし日を選んでください');
-              else if (rec.date && rec.withdrawDate < rec.date) err('withdrawDate', '引き落とし日は利用日以降の日付にしてください');
+            // カードの引き落とし日は任意（空欄なら「未設定」として後日入力）
+            const wd = isCard() ? $('withdrawDate').value : '';
+            if (wd) {
+              rec.withdrawDate = wd;
+              if (!U.isValidDate(wd)) err('withdrawDate', '日付が正しくありません');
+              else if (rec.date && wd < rec.date) err('withdrawDate', '引き落とし日は利用日以降の日付にしてください');
             }
           }
           return ok ? rec : null;
@@ -1778,15 +1802,20 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
     t.type === 'adjust' ? `<span class="amt ${t.amount < 0 ? 'exp' : 'inc'}">${t.amount < 0 ? '−' : '+'}${U.num(Math.abs(t.amount))}</span>` :
     `<span class="amt">${U.num(t.amount)}</span>`;
 
-  function txRows(model, txs) {
+  // opts.wdMessage：引き落とし日が未設定のカード利用に案内文を出す（ホーム）
+  function txRows(model, txs, opts) {
     if (!txs.length) return '<p class="empty">取引はありません</p>';
+    const wdMessage = opts && opts.wdMessage;
     return `<table class="list"><thead><tr><th>日付</th><th>内容</th><th class="hide-sm">口座</th><th class="r">金額</th></tr></thead><tbody>
       ${txs.map((t) => {
         const acc = model.accById.get(t.accountId);
-        const wd = t.withdrawDate && B.isAutoCard(acc, model.accById) ? `<span class="tag">引落 ${U.md(t.withdrawDate)}</span>` : '';
-        return `<tr data-tx="${t.id}" class="clickable">
+        const unset = C.isUnset(t, model.accById);
+        const wd = t.withdrawDate && acc && acc.kind === 'credit' ? `<span class="tag">引落 ${U.md(t.withdrawDate)}</span>`
+          : unset ? '<span class="tag bad">引落日 未設定</span>' : '';
+        const msg = unset && wdMessage ? '<div class="wd-missing">引き落とし日が未設定です。分かり次第後日入力してください。</div>' : '';
+        return `<tr data-tx="${t.id}" class="clickable ${unset && wdMessage ? 'row-warn' : ''}">
           <td class="nowrap">${U.mdw(t.date)}</td>
-          <td>${txLabel(model, t)} ${wd}${t.memo ? `<div class="sub">${U.esc(t.memo)}</div>` : ''}<div class="sub show-sm">${U.esc(acc ? acc.name : '')}</div></td>
+          <td>${txLabel(model, t)} ${wd}${t.memo ? `<div class="sub">${U.esc(t.memo)}</div>` : ''}${msg}<div class="sub show-sm">${U.esc(acc ? acc.name : '')}</div></td>
           <td class="hide-sm">${U.esc(acc ? acc.name : '')}</td>
           <td class="r nowrap">${txAmount(t)}</td></tr>`;
       }).join('')}</tbody></table>`;
@@ -1854,7 +1883,8 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
     const accs = data.accounts.filter((a) => !a.archived);
     const total = B.totalAt(model, today, 'end', accs.map((a) => a.id));
     const mon = R.month(model, y, m);
-    const cards = accs.filter((a) => B.isAutoCard(a, model.accById));
+    const cards = accs.filter((a) => a.kind === 'credit');
+    const unsetAll = C.unsetItems(model);
     const diffs = [...model.diffs.values()].filter((d) => !d.first && d.diff !== 0);
     const recent = data.transactions.filter((t) => t.date <= today).sort(sortTx).slice(0, 10);
     const lastBackup = KB.state.settings.lastBackupAt;
@@ -1883,7 +1913,7 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
           ${cards.length ? `<h3>次の引き落とし</h3><table class="kv">${cards.map((c) => {
             const g = C.nextGroup(model, c.id, today);
             const bank = model.accById.get(c.settlementAccountId);
-            return `<tr><th>${U.esc(c.name)}<div class="sub">${U.esc(bank ? bank.name : '')}から</div></th><td class="r">${g
+            return `<tr><th>${U.esc(c.name)}<div class="sub">${bank ? U.esc(bank.name) + 'から' : '引き落とし口座 未設定'}</div></th><td class="r">${g
               ? `${U.mdw(g.date)}　<b>${U.yen(g.total)}</b>${g.insufficient ? ' <span class="tag bad">残高不足</span>' : ''}`
               : '<span class="muted">予定なし</span>'}</td></tr>`;
           }).join('')}</table>` : ''}
@@ -1891,7 +1921,8 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
       </div>
       <section class="card">
         <div class="card-head"><h2>最近の取引</h2><a href="#list">すべて見る</a></div>
-        ${txRows(model, recent)}
+        ${unsetAll.length ? `<p class="wd-missing-sum">引き落とし日が未設定のカード利用が全部で ${unsetAll.length} 件あります。<a href="#withdraw">引き落とし画面で一覧を見る</a></p>` : ''}
+        ${txRows(model, recent, { wdMessage: true })}
       </section>`;
     root.querySelector('#home-snap').onclick = () => A.openSnapshot();
     bindTxRows(root, data);
@@ -2036,14 +2067,20 @@ dialog.confirm { width: min(420px, calc(100vw - 32px)); }
     root.innerHTML = cards.length === 0
       ? `<section class="card"><h2>引き落とし</h2><p class="empty">クレジットカードの口座がありません。<a href="#config">設定</a>で種類「クレジットカード」の口座を追加してください。</p></section>`
       : cards.map((c) => {
-        if (!B.isAutoCard(c, model.accById))
-          return `<section class="card"><h2>${U.esc(c.name)}</h2><p class="empty">引き落とし口座が未設定のため、自動計算していません。<a href="#config">設定</a>で引き落とし口座を選ぶと、ここに引き落とし日ごとの合計が出ます。</p></section>`;
+        const auto = B.isAutoCard(c, model.accById);
         const gs = C.groups(model, c.id);
         const up = gs.filter((g) => g.date >= today);
         const past = gs.filter((g) => g.date < today).reverse();
-        const bank = model.accById.get(c.settlementAccountId);
+        const bank = auto ? model.accById.get(c.settlementAccountId) : null;
+        const unset = C.unsetItems(model, c.id);
         return `<section class="card">
-          <div class="card-head"><h2>${U.esc(c.name)}</h2><span class="muted">引き落とし口座：${U.esc(bank.name)}</span></div>
+          <div class="card-head"><h2>${U.esc(c.name)}</h2><span class="muted">引き落とし口座：${bank ? U.esc(bank.name) : '未設定'}</span></div>
+          ${auto ? '' : '<p class="notice warn">引き落とし口座が未設定のため、引き落とし日に銀行の残高から自動では引かれません。<a href="#config">設定</a>で引き落とし口座を選んでください。</p>'}
+          ${unset.length ? `<h3 class="neg">引き落とし日が未設定（${unset.length}件・${U.yen(U.sum(unset, (t) => (t.type === 'expense' ? t.amount : -t.amount)))}）</h3>
+            <p class="hint">分かり次第、行を押して引き落とし日を入力してください。</p>
+            <table class="list"><thead><tr><th>利用日</th><th>内容</th><th class="r">金額</th></tr></thead><tbody>
+            ${unset.map((t) => `<tr class="clickable" data-tx="${t.id}"><td class="nowrap">${U.mdw(t.date)}</td><td>${txLabel(model, t)}${t.memo ? `<div class="sub">${U.esc(t.memo)}</div>` : ''}</td>
+              <td class="r nowrap">${t.type === 'income' ? '−' : ''}${U.num(t.amount)}</td></tr>`).join('')}</tbody></table>` : ''}
           <h3>これからの引き落とし</h3>
           ${up.length ? up.map((g, i) => groupHTML(g, i === 0)).join('') : '<p class="empty">予定はありません</p>'}
           ${past.length ? `<details class="past"><summary>済んだ引き落とし（${past.length}回）</summary>${past.map((g) => groupHTML(g, false)).join('')}</details>` : ''}

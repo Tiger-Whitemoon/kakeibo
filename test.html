@@ -348,7 +348,8 @@
    */
   C.groups = function (model, cardId) {
     const card = model.accById.get(cardId);
-    if (!B.isAutoCard(card, model.accById)) return [];
+    if (!card || card.kind !== 'credit') return [];
+    const auto = B.isAutoCard(card, model.accById);
     const map = new Map();
     model.data.transactions.forEach((t) => {
       if (t.accountId !== cardId || !t.withdrawDate) return;
@@ -364,12 +365,26 @@
     const groups = [...map.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
     groups.forEach((g) => {
       g.items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      g.auto = auto;
+      if (!auto) { g.insufficient = false; return; }
       const bal = B.balanceAt(model, bankId, g.date, 'end');
       g.bankBalance = bal;
       g.insufficient = bal.status !== 'unknown' && bal.value < 0;
     });
     return groups;
   };
+
+  /** 引き落とし日が未設定のカード利用か */
+  C.isUnset = (t, accById) => {
+    const a = accById.get(t.accountId);
+    return !!(a && a.kind === 'credit' && (t.type === 'expense' || t.type === 'income') && !t.withdrawDate);
+  };
+
+  /** 引き落とし日が未設定のカード利用（利用日の古い順） */
+  C.unsetItems = (model, cardId) =>
+    model.data.transactions
+      .filter((t) => (!cardId || t.accountId === cardId) && C.isUnset(t, model.accById))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   /** 今日以降で最も近い引き落とし（ホーム用） */
   C.nextGroup = function (model, cardId, today) {
@@ -698,6 +713,20 @@
       C.defaultWithdrawDate(dC.transactions, 'カード', '2026-11-17'), '2026-12-10');
     eq('引き落とし日の初期値：直前の引き落とし日が過去なら空欄',
       C.defaultWithdrawDate(dC.transactions, 'カード', '2026-12-11'), '');
+
+    // 引き落とし日が未設定のカード利用
+    const dW = JSON.parse(JSON.stringify(dC));
+    dW.transactions.push(tx({ id: 'nowd', type: 'expense', date: '2026-11-16', amount: 700, accountId: 'カード', categoryId: '食費' }));
+    m = B.buildModel(dW);
+    eq('引き落とし日が未設定の利用は「未設定」一覧に出る', C.unsetItems(m, 'カード').map((t) => t.id), ['nowd']);
+    eq('未設定の利用はカードの残高だけ減り、銀行からは引かれない',
+      [B.balanceAt(m, 'カード', '2026-12-31', 'end').value, B.balanceAt(m, '銀行', '2026-12-31', 'end').value], [-700, 95000]);
+    eq('未設定の利用は引き落とし合計に入らない', C.groups(m, 'カード')[0].total, 5000);
+    const dN = JSON.parse(JSON.stringify(dC));
+    dN.accounts.find((a) => a.id === 'カード').settlementAccountId = '';
+    m = B.buildModel(dN);
+    eq('引き落とし口座が未設定のカードも、引き落とし日ごとの合計は出る', C.groups(m, 'カード').map((g) => [g.date, g.total, g.auto]), [['2026-12-10', 5000, false]]);
+    eq('引き落とし口座が未設定なら銀行の残高は変わらない', B.balanceAt(m, '銀行', '2026-12-10', 'end').value, 100000);
 
     // 年次
     m = B.buildModel(withTx(dC, adjust));
